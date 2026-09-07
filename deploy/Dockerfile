@@ -25,7 +25,9 @@ COPY package.json package-lock.json ./
 COPY packages/pipeline/package.json packages/pipeline/
 COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --include-workspace-root \
+  --workspace @oslomap/server --workspace @oslomap/pipeline \
+  && npm cache clean --force
 COPY tsconfig.base.json ./
 COPY packages/pipeline ./packages/pipeline
 COPY packages/server ./packages/server
