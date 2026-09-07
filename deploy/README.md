@@ -128,6 +128,15 @@ Measured on the real feed:
 | caddy | ~30 MB | 256 MB | |
 | pipeline | 764 MB | 1536 MB | one-shot, ~10 s with cached zips |
 
+The pipeline figure was measured with `/usr/bin/time -l` on darwin/arm64, not on
+the target. Linux and glibc will not land on the same number, so treat 764 MB,
+and the 2.6 GB of 4 GB it implies, as an indication rather than a guarantee.
+Re-measure on the box after the first nightly run:
+
+```sh
+systemd-run --scope -p MemoryAccounting=yes ./refresh-data.sh
+```
+
 The pipeline holds the whole merged corpus in memory (23064 trips before
 filtering, 380686 kept calls, 2418 shapes) but it streams the CSV files line by
 line and shells out to `unzip`, so the 825 MB of extracted GTFS never lands in
