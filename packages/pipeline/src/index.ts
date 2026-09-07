@@ -34,15 +34,29 @@ interface Args {
   maxAgeHours: number;
 }
 
-function osloDateStamp(now: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
+const SERVICE_DAY_START_HOUR = 4;
+
+function osloParts(now: Date): { date: string; hour: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Oslo',
+    hour12: false,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  })
-    .format(now)
-    .replace(/-/g, '');
+    hour: '2-digit',
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  return { date: `${get('year')}${get('month')}${get('day')}`, hour: Number(get('hour')) % 24 };
+}
+
+function osloDateStamp(now: Date): string {
+  const { date, hour } = osloParts(now);
+  if (hour >= SERVICE_DAY_START_HOUR) return date;
+  const y = Number(date.slice(0, 4));
+  const m = Number(date.slice(4, 6));
+  const d = Number(date.slice(6, 8));
+  const previous = new Date(Date.UTC(y, m - 1, d) - 86_400_000);
+  return previous.toISOString().slice(0, 10).replace(/-/g, '');
 }
 
 function parseArgs(argv: string[]): Args {

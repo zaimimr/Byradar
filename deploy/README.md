@@ -108,9 +108,10 @@ the map: metro and tram disappear entirely and only GPS-sourced vehicles remain.
 Rebuilding at 04:45 leaves the night covered by yesterday's generation and swaps
 in the new day once night service has ended.
 
-The same trap applies to a manual run. `npm run build:data` after midnight
-builds the *new* service date and drops the night services that are still
-running. Pass `--date=` with yesterday's date if you need to rebuild at night.
+The pipeline picks the service date that is *currently running*, not the
+calendar date: before 04:00 Oslo it builds yesterday's, because that is the day
+whose 24:00-27:00 trips are on the road right now. So a manual `npm run
+build:data` is safe at any hour. `--date=` still overrides it.
 `Persistent=true` means a run missed while the box was down happens at the next
 boot.
 
