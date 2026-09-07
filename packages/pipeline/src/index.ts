@@ -18,7 +18,7 @@ import { clipRunsToBbox, simplifyLonLat } from './simplify.js';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
-const DATA_DIR = join(REPO_ROOT, 'data');
+const DATA_DIR = process.env.DATA_DIR ? resolve(process.env.DATA_DIR) : join(REPO_ROOT, 'data');
 const CACHE_DIR = join(REPO_ROOT, '.cache', 'gtfs');
 
 const CLIP_PAD_DEGREES = 0.03;

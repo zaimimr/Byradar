@@ -2,14 +2,26 @@ import type { Engine, VehicleSource } from './engine.js';
 import { delayAtSeq, isSkipped } from './rt.js';
 import { CALL_DEP, CALL_QUAY, CALL_SEQ, NO_STOP_PLACE, type StopPlaceMeta, type Store } from './store.js';
 
+export type TimetableCoverage = 'full' | 'partial' | 'none';
+
+export interface StopCoverage {
+  timetable: TimetableCoverage;
+  missingModes: string[];
+}
+
 export class DepartureIndex {
   private constructor(
     private readonly offsets: Int32Array,
     private readonly tripIdx: Int32Array,
     private readonly callIdx: Int32Array,
     private readonly aimed: Int32Array,
+    private readonly stopCoverage: StopCoverage[],
     readonly buildMs: number,
   ) {}
+
+  coverageOf(place: number): StopCoverage {
+    return this.stopCoverage[place] ?? { timetable: 'none', missingModes: [] };
+  }
 
   get size(): number {
     return this.tripIdx.length;
@@ -36,18 +48,29 @@ export class DepartureIndex {
     const callIdx = new Int32Array(total);
     const aimed = new Int32Array(total);
     const cursor = offsets.slice(0, places);
+    const modesWithCalls: Array<Set<string>> = Array.from({ length: places }, () => new Set());
 
     for (let t = 0; t < store.trips.length; t++) {
-      const calls = store.trips[t]!.n;
-      for (let k = 0; k < calls - 1; k++) {
+      const trip = store.trips[t]!;
+      const mode = store.routes[trip.r]!.mode;
+      for (let k = 0; k < trip.n - 1; k++) {
         const place = store.stopPlaceOfQuay(store.call(t, k, CALL_QUAY));
         if (place === NO_STOP_PLACE) continue;
         const at = cursor[place]!++;
         tripIdx[at] = t;
         callIdx[at] = k;
         aimed[at] = Math.round(store.call(t, k, CALL_DEP));
+        modesWithCalls[place]!.add(mode);
       }
     }
+
+    const stopCoverage = store.stopPlaces.map((stop, place) => {
+      const served = modesWithCalls[place]!;
+      const missingModes = stop.modes.filter((mode) => !served.has(mode));
+      const timetable: TimetableCoverage =
+        missingModes.length === 0 ? 'full' : missingModes.length === stop.modes.length ? 'none' : 'partial';
+      return { timetable, missingModes };
+    });
 
     const order: number[] = [];
     for (let p = 0; p < places; p++) {
@@ -67,7 +90,7 @@ export class DepartureIndex {
       }
     }
 
-    return new DepartureIndex(offsets, tripIdx, callIdx, aimed, performance.now() - started);
+    return new DepartureIndex(offsets, tripIdx, callIdx, aimed, stopCoverage, performance.now() - started);
   }
 
   firstAtOrAfter(place: number, fromSec: number): number {
@@ -115,8 +138,13 @@ export interface DepartureRow {
   realtime: boolean;
 }
 
+export interface DepartureStop extends StopPlaceMeta {
+  timetable: TimetableCoverage;
+  missingModes: string[];
+}
+
 export interface DepartureBoard {
-  stop: StopPlaceMeta;
+  stop: DepartureStop;
   departures: DepartureRow[];
 }
 
@@ -167,5 +195,8 @@ export function buildDepartureBoard(
   }
 
   rows.sort((a, b) => a.expected - b.expected);
-  return { stop: store.stopPlaces[place]!, departures: rows.slice(0, limit) };
+  return {
+    stop: { ...store.stopPlaces[place]!, ...index.coverageOf(place) },
+    departures: rows.slice(0, limit),
+  };
 }
