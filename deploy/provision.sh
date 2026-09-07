@@ -13,6 +13,18 @@ log "timezone"
 timedatectl set-timezone Europe/Oslo
 timedatectl show --property=Timezone --value
 
+log "swap"
+if [ ! -f /swapfile ] && [ "$(free -m | awk '/^Mem:/{print $2}')" -lt 3000 ]; then
+	fallocate -l 2G /swapfile
+	chmod 600 /swapfile
+	mkswap -q /swapfile
+	swapon /swapfile
+	grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+	sysctl -q -w vm.swappiness=10
+	grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
+fi
+free -m | head -3
+
 log "base packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq

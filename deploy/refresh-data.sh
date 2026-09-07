@@ -19,6 +19,12 @@ in_container <<'INNER'
 rm -rf /app/data/.staging
 INNER
 
+log "stopping the server so the pipeline has the memory to itself"
+docker compose stop server
+
+restart_server() { docker compose start server >/dev/null 2>&1 || true; }
+trap restart_server EXIT
+
 log "running pipeline into staging"
 if ! docker compose --profile tools run --rm -T --no-deps -e DATA_DIR=/app/data/.staging pipeline; then
 	log "pipeline FAILED, live data untouched, server keeps the timetable it has"
@@ -66,8 +72,9 @@ INNER
 	exit 1
 fi
 
-log "restarting server"
-docker compose restart server
+trap - EXIT
+log "starting server"
+docker compose start server
 
 for _ in $(seq 1 30); do
 	sleep 5
