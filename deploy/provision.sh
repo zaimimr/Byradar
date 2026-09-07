@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/zaimimr/oslomap.git}"
-TARGET="${TARGET:-/opt/oslomap}"
+REPO_URL="${REPO_URL:-https://github.com/zaimimr/byradar.git}"
+TARGET="${TARGET:-/opt/byradar}"
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'provision: %s\n' "$*" >&2; exit 1; }
@@ -66,11 +66,11 @@ docker compose up -d
 docker compose ps
 
 log "nightly refresh timer"
-install -m 644 systemd/oslomap-refresh.service /etc/systemd/system/
-install -m 644 systemd/oslomap-refresh.timer /etc/systemd/system/
+install -m 644 systemd/byradar-refresh.service /etc/systemd/system/
+install -m 644 systemd/byradar-refresh.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now oslomap-refresh.timer
-systemctl list-timers oslomap-refresh.timer --no-pager
+systemctl enable --now byradar-refresh.timer
+systemctl list-timers byradar-refresh.timer --no-pager
 
 log "waiting for the server to answer /health"
 for _ in $(seq 1 40); do

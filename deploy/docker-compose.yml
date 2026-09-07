@@ -1,7 +1,7 @@
-name: oslomap
+name: byradar
 
 x-image: &image
-  image: oslomap:latest
+  image: byradar:latest
   platform: linux/amd64
   build:
     context: ..
@@ -48,7 +48,7 @@ services:
     <<: *image
     profiles:
       - tools
-    command: ["npm", "run", "-w", "@oslomap/pipeline", "start"]
+    command: ["npm", "run", "-w", "@byradar/pipeline", "start"]
     environment:
       NODE_OPTIONS: --max-old-space-size=1280
     volumes:

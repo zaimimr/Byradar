@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-09-07T16:49:45.822Z",
+  "serviceDate": "20260907",
+  "bbox": {
+    "minLat": 59.79,
+    "maxLat": 60.14,
+    "minLon": 10.45,
+    "maxLon": 11
+  },
+  "sources": [
+    {
+      "codespace": "RUT",
+      "interpolate": true
+    },
+    {
+      "codespace": "VYG",
+      "interpolate": false
+    },
+    {
+      "codespace": "FLT",
+      "interpolate": false
+    },
+    {
+      "codespace": "OST",
+      "interpolate": false
+    },
+    {
+      "codespace": "NBU",
+      "interpolate": false
+    }
+  ],
+  "counts": {
+    "routes": 206,
+    "networkPaths": 468,
+    "stopPlaces": 1553,
+    "trips": 14849,
+    "shapes": 600,
+    "calls": 380686,
+    "journeyDestinations": 1364
+  },
+  "modes": [
+    "metro",
+    "rail",
+    "tram",
+    "ferry",
+    "bus"
+  ]
+}

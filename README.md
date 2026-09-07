@@ -1,4 +1,4 @@
-# Oslo Kollektiv
+# Byradar
 
 Live map of Oslo's public transport network: every metro, tram, bus, ferry and train line, with vehicles moving in real time.
 
@@ -86,7 +86,7 @@ Without a MapTiler key the basemap falls back to CARTO dark-matter, which needs 
 `data/` is generated and gitignored. Regenerate it daily, after Entur publishes (~06:00 Oslo):
 
 ```bash
-0 5 * * * cd /path/to/OsloMap && npm run build:data && systemctl restart oslomap
+0 5 * * * cd /path/to/Byradar && npm run build:data && systemctl restart byradar
 ```
 
 Pass `--force` to bypass the 6-hour zip cache, or `--date=2026-09-14` to build a different service date.

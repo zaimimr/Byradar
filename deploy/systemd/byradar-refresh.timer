@@ -1,5 +1,5 @@
 [Unit]
-Description=Nightly OsloMap timetable rebuild
+Description=Nightly Byradar timetable rebuild
 
 [Timer]
 OnCalendar=*-*-* 03:30:00

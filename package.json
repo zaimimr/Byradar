@@ -1,16 +1,16 @@
 {
-  "name": "oslomap",
+  "name": "byradar",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "workspaces": ["packages/*"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "build:data": "npm run -w @oslomap/pipeline start",
-    "dev": "concurrently -n server,web -c cyan,magenta \"npm run -w @oslomap/server dev\" \"npm run -w @oslomap/web dev\"",
-    "dev:server": "npm run -w @oslomap/server dev",
-    "dev:web": "npm run -w @oslomap/web dev",
-    "build": "npm run -w @oslomap/web build",
+    "build:data": "npm run -w @byradar/pipeline start",
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run -w @byradar/server dev\" \"npm run -w @byradar/web dev\"",
+    "dev:server": "npm run -w @byradar/server dev",
+    "dev:web": "npm run -w @byradar/web dev",
+    "build": "npm run -w @byradar/web build",
     "typecheck": "tsc -b packages/pipeline packages/server packages/web"
   },
   "devDependencies": {

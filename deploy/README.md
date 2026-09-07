@@ -1,4 +1,4 @@
-# Deploying OsloMap
+# Deploying Byradar
 
 One Hetzner CX22 (2 vCPU, 4 GB RAM, 40 GB disk) behind Cloudflare, sized for about
 1000 concurrent viewers. Caddy terminates TLS and reverse-proxies a single Node
@@ -18,13 +18,13 @@ Cloudflare -> Caddy :443 -> server :8787 -> data volume
 Ubuntu 24.04:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/zaimimr/oslomap/main/deploy/provision.sh -o provision.sh
+curl -fsSL https://raw.githubusercontent.com/zaimimr/byradar/main/deploy/provision.sh -o provision.sh
 bash provision.sh          # first run stops and tells you to fill in deploy/.env
-$EDITOR /opt/oslomap/deploy/.env
+$EDITOR /opt/byradar/deploy/.env
 bash provision.sh          # second run builds, seeds the data and starts everything
 ```
 
-It sets the timezone, installs Docker, clones to `/opt/oslomap`, refuses to
+It sets the timezone, installs Docker, clones to `/opt/byradar`, refuses to
 continue while `.env` still holds placeholder values, builds, runs the pipeline
 once only if the data volume is empty, starts the stack, installs the nightly
 timer and waits for `/health`.
@@ -46,11 +46,11 @@ The manual equivalent, if you would rather do it by hand:
    itself is a no-op and building on an Apple Silicon Mac emulates rather than
    silently producing an unusable arm64 image.
 
-3. Clone the repo to `/opt/oslomap` and configure:
+3. Clone the repo to `/opt/byradar` and configure:
 
    ```sh
-   git clone <repo-url> /opt/oslomap
-   cd /opt/oslomap/deploy
+   git clone <repo-url> /opt/byradar
+   cd /opt/byradar/deploy
    cp .env.example .env
    $EDITOR .env
    ```
@@ -79,7 +79,7 @@ The server reads the timetable once at boot and will crash-loop while
 `/app/data/server` is empty, so build the data first:
 
 ```sh
-cd /opt/oslomap/deploy
+cd /opt/byradar/deploy
 docker compose build
 docker compose --profile tools run --rm pipeline
 docker compose up -d
@@ -92,10 +92,10 @@ six hours old.
 Install the nightly refresh:
 
 ```sh
-cp systemd/oslomap-refresh.* /etc/systemd/system/
+cp systemd/byradar-refresh.* /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now oslomap-refresh.timer
-systemctl list-timers oslomap-refresh.timer
+systemctl enable --now byradar-refresh.timer
+systemctl list-timers byradar-refresh.timer
 ```
 
 The timer fires at 03:30 Oslo time with up to 15 minutes of jitter.
@@ -133,7 +133,7 @@ curl -s "https://$SITE_ADDRESS/stops/NSR%3AStopPlace%3A58163/departures?limit=3"
 
 docker compose ps
 docker stats --no-stream
-journalctl -u oslomap-refresh.service -n 50
+journalctl -u byradar-refresh.service -n 50
 ```
 
 `serviceDate` in `/health` must be today's Oslo date. If it is yesterday's, the
@@ -156,8 +156,8 @@ Image size, since the available commands disagree and it is worth knowing which
 is which:
 
 ```sh
-docker images --format '{{.Size}}' oslomap:latest   # 441 MB, sum of layer sizes
-docker run --rm --entrypoint sh oslomap:latest -c 'du -sx -m /'   # 320 MB on disk
+docker images --format '{{.Size}}' byradar:latest   # 441 MB, sum of layer sizes
+docker run --rm --entrypoint sh byradar:latest -c 'du -sx -m /'   # 320 MB on disk
 ```
 
 Read `docker images` immediately after a build and it can report a much smaller
@@ -240,7 +240,7 @@ cacheable and pass through.
 docker compose logs -f server
 docker compose restart server
 ./refresh-data.sh                     # rebuild the timetable now
-docker compose --profile tools run --rm pipeline npm run -w @oslomap/pipeline start:force
+docker compose --profile tools run --rm pipeline npm run -w @byradar/pipeline start:force
 docker compose build && docker compose up -d   # after a git pull
 ```
 

@@ -26,7 +26,7 @@ COPY packages/pipeline/package.json packages/pipeline/
 COPY packages/server/package.json packages/server/
 COPY packages/web/package.json packages/web/
 RUN npm ci --omit=dev --include-workspace-root \
-  --workspace @oslomap/server --workspace @oslomap/pipeline \
+  --workspace @byradar/server --workspace @byradar/pipeline \
   && npm cache clean --force
 COPY tsconfig.base.json ./
 COPY packages/pipeline ./packages/pipeline
@@ -36,4 +36,4 @@ RUN mkdir -p /app/data /app/.cache && chown -R node:node /app/data /app/.cache
 USER node
 EXPOSE 8787
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["npm", "run", "-w", "@oslomap/server", "start"]
+CMD ["npm", "run", "-w", "@byradar/server", "start"]

@@ -59,7 +59,7 @@ export function calmBasemap(map: MapLibreMap): void {
   }
 }
 
-const BUILDING_LAYER_ID = 'oslomap-buildings';
+const BUILDING_LAYER_ID = 'byradar-buildings';
 
 interface BuildingSourceInfo {
   source: string;

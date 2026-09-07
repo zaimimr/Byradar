@@ -365,7 +365,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 if (import.meta.env.DEV) {
-  Object.defineProperty(window, '__oslomap', {
+  Object.defineProperty(window, '__byradar', {
     value: {
       get map() {
         return map;

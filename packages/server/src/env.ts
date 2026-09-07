@@ -20,7 +20,7 @@ export const ENV = {
   rtPollMs: int('RT_POLL_MS', 60_000),
   vmPollMs: int('VM_POLL_MS', 8_000),
   tickMs: int('TICK_MS', 2_000),
-  clientName: process.env.ET_CLIENT_NAME ?? 'oslomap-dev',
+  clientName: process.env.ET_CLIENT_NAME ?? 'byradar-dev',
   dataDir: resolve(REPO_ROOT, 'data', 'server'),
   webDataDir: resolve(REPO_ROOT, 'data', 'web'),
 } as const;
