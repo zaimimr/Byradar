@@ -1,0 +1,13 @@
+{
+  "name": "@oslomap/pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "start:force": "tsx src/index.ts --force"
+  },
+  "dependencies": {
+    "tsx": "^4.19.2"
+  }
+}

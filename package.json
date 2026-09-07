@@ -1,0 +1,20 @@
+{
+  "name": "oslomap",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build:data": "npm run -w @oslomap/pipeline start",
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run -w @oslomap/server dev\" \"npm run -w @oslomap/web dev\"",
+    "dev:server": "npm run -w @oslomap/server dev",
+    "dev:web": "npm run -w @oslomap/web dev",
+    "build": "npm run -w @oslomap/web build",
+    "typecheck": "tsc -b packages/pipeline packages/server packages/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}
