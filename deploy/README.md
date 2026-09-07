@@ -1,6 +1,6 @@
 # Deploying Byradar
 
-One Hetzner CX22 (2 vCPU, 4 GB RAM, 40 GB disk) behind Cloudflare, sized for about
+One Hetzner CPX22 (2 vCPU, 4 GB RAM, 80 GB disk) behind Cloudflare, sized for about
 1000 concurrent viewers. Caddy terminates TLS and reverse-proxies a single Node
 server that serves the web bundle, the static timetable data and the `/live`
 WebSocket.
@@ -14,7 +14,7 @@ Cloudflare -> Caddy :443 -> server :8787 -> data volume
 
 ## Provision
 
-`provision.sh` does all of the below and is safe to re-run. On a fresh CX22 with
+`provision.sh` does all of the below and is safe to re-run. On a fresh CPX22 with
 Ubuntu 24.04:
 
 ```sh
@@ -31,7 +31,7 @@ timer and waits for `/health`.
 
 The manual equivalent, if you would rather do it by hand:
 
-1. Create the CX22 with Ubuntu 24.04, then on the box:
+1. Create the CPX22 with Ubuntu 24.04, then on the box:
 
    ```sh
    timedatectl set-timezone Europe/Oslo
@@ -138,6 +138,25 @@ journalctl -u byradar-refresh.service -n 50
 
 `serviceDate` in `/health` must be today's Oslo date. If it is yesterday's, the
 nightly job did not run or the pipeline failed; check the journal.
+
+## Choosing the machine
+
+Hetzner's Cost-Optimized line (CX) reads "Currently not available" and is greyed
+out in every location, so CPX is what you can actually buy. Prices in the console
+include Norwegian VAT:
+
+| Type | vCPU | RAM | Disk | Traffic | Price incl. VAT |
+|---|---|---|---|---|---|
+| CPX12 | 1 | 2 GB | 40 GB | 20 TB | €14.36/mo |
+| CPX22 | 2 | 4 GB | 80 GB | 20 TB | €24.36/mo |
+| CPX32 | 4 | 8 GB | 160 GB | 20 TB | €44.36/mo |
+
+Plus €0.63/mo for the IPv4.
+
+CPX22 is the drop-in: the limits below add to 2.6 GB and fit its 4 GB. CPX12's
+2 GB cannot hold the server and the pipeline at the same time, so on that plan
+the nightly refresh has to stop the server first, trading a few seconds of
+restart for about two minutes of downtime.
 
 ## Resource budget
 
