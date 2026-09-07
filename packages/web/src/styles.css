@@ -453,6 +453,12 @@ body {
   color: var(--text-dim);
 }
 
+.prov--missing {
+  background: rgba(233, 166, 63, 0.12);
+  border: 1px dashed rgba(233, 166, 63, 0.5);
+  color: #e0b978;
+}
+
 .legend__note {
   margin: 11px 0 0;
   padding-top: 9px;
@@ -1103,6 +1109,12 @@ body {
   margin-top: 13px;
   padding-top: 11px;
   border-top: 1px solid var(--hair);
+}
+
+.stop__body > .veh__prov:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .deps {

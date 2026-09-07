@@ -83,8 +83,15 @@ export interface Departure {
   realtime: boolean;
 }
 
+export type TimetableCoverage = 'full' | 'partial' | 'none';
+
+export interface DepartureStop extends StopPlace {
+  timetable?: TimetableCoverage;
+  missingModes?: Mode[];
+}
+
 export interface StopDepartures {
-  stop: StopPlace;
+  stop: DepartureStop;
   departures: Departure[];
 }
 

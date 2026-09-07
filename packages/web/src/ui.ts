@@ -11,7 +11,7 @@ import {
 import { flatten, search } from './search.js';
 import type { LineHit, SearchHit, SearchIndex, StopGroup, StopHit } from './search.js';
 import type { AppState, LineFilter } from './state.js';
-import type { DataMeta, Departure, Mode, Vehicle, VehicleDetail } from './types.js';
+import type { DataMeta, Departure, Mode, TimetableCoverage, Vehicle, VehicleDetail } from './types.js';
 
 const OSLO_CLOCK = new Intl.DateTimeFormat('nb-NO', {
   timeZone: 'Europe/Oslo',
@@ -27,10 +27,15 @@ const CROSSHAIR = `<svg class="rail__glyph" viewBox="0 0 16 16" aria-hidden="tru
 
 export type LocateState = 'idle' | 'busy' | 'active';
 
+export interface Coverage {
+  level: TimetableCoverage;
+  missing: Mode[];
+}
+
 export type DeparturesState =
   | { phase: 'loading' }
   | { phase: 'failed' }
-  | { phase: 'ready'; departures: Departure[] };
+  | { phase: 'ready'; departures: Departure[]; coverage: Coverage };
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -532,10 +537,30 @@ export class Ui {
   }
 }
 
+function listModes(modes: Mode[]): string {
+  const names = modes.map((mode) => MODE_LABEL[mode].toLowerCase());
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} og ${names[names.length - 1]}`;
+}
+
+function missingNote(missing: Mode[]): string {
+  const named = listModes(missing);
+  const lead = named ? `Vi mangler rutetider for ${named} her.` : 'Vi mangler rutetider her.';
+  return `<div class="veh__prov">
+      <span class="prov prov--missing">MANGLER</span>
+      <span>${lead} Datagrunnlaget har bare holdeplasstider fra Ruter, så avganger fra Vy, Flytoget og Brakar mangler.</span>
+    </div>`;
+}
+
 function departuresBody(group: StopGroup, state: DeparturesState): string {
   if (state.phase === 'loading') return '<p class="inspector__note">henter avganger&hellip;</p>';
   if (state.phase === 'failed') return '<p class="inspector__note">kunne ikke hente avganger akkurat nå.</p>';
-  if (!state.departures.length) return '<p class="inspector__note">ingen flere avganger herfra i dag.</p>';
+
+  const note = state.coverage.level === 'full' ? '' : missingNote(state.coverage.missing);
+  if (state.coverage.level === 'none') return note;
+  if (!state.departures.length) {
+    return `<p class="inspector__note">Ingen flere avganger herfra i dag.</p>${note}`;
+  }
 
   const rows = state.departures
     .map((dep) => {
@@ -558,7 +583,7 @@ function departuresBody(group: StopGroup, state: DeparturesState): string {
     })
     .join('');
 
-  return `<p class="calls__title">Neste avganger</p><ul class="deps">${rows}</ul>`;
+  return `<p class="calls__title">Neste avganger</p><ul class="deps">${rows}</ul>${note}`;
 }
 
 function escapeHtml(value: string): string {

@@ -12,8 +12,10 @@ import type { SearchIndex, StopGroup } from './search.js';
 import { buildVehicleSprites } from './sprites.js';
 import { createState, readHashLineId, syncHash } from './state.js';
 import { Ui } from './ui.js';
+import type { Coverage } from './ui.js';
 import type {
   DataMeta,
+  DepartureStop,
   Mode,
   NetworkPath,
   RouteMeta,
@@ -25,7 +27,7 @@ import type {
 
 const STALE_AFTER_MS = 8000;
 const DEPARTURE_LIMIT = 12;
-const MAX_GROUP_FETCH = 6;
+const MAX_GROUP_FETCH = 12;
 const STOP_FLY_ZOOM = 15.4;
 const PICKING_RADIUS = 5;
 const VEHICLE_LAYER_IDS = ['vehicle-hull', 'vehicle-bubble'];
@@ -185,16 +187,37 @@ async function openStop(group: StopGroup): Promise<void> {
   const responses = await Promise.all(members.map((member) => fetchDepartures(member.id)));
   if (state.selectedStop !== group.key) return;
 
-  if (responses.every((r) => r === null)) {
+  const answered = responses.filter((r): r is StopDepartures => r !== null);
+  if (!answered.length) {
     ui.renderStop(group, { phase: 'failed' });
     return;
   }
 
-  const departures = responses
-    .flatMap((r) => r?.departures ?? [])
+  const departures = answered
+    .flatMap((r) => r.departures)
     .sort((a, b) => a.expected - b.expected)
     .slice(0, DEPARTURE_LIMIT);
-  ui.renderStop(group, { phase: 'ready', departures });
+  ui.renderStop(group, { phase: 'ready', departures, coverage: mergeCoverage(answered) });
+}
+
+function missingModesOf(stop: DepartureStop): Mode[] {
+  if (stop.missingModes) return stop.missingModes;
+  return stop.timetable === 'none' ? stop.modes : [];
+}
+
+function mergeCoverage(answered: StopDepartures[]): Coverage {
+  const advertised = new Set<Mode>();
+  const served = new Set<Mode>();
+  for (const response of answered) {
+    const missing = new Set(missingModesOf(response.stop));
+    for (const mode of response.stop.modes) {
+      advertised.add(mode);
+      if (!missing.has(mode)) served.add(mode);
+    }
+  }
+  const missing = [...advertised].filter((mode) => !served.has(mode));
+  if (!missing.length) return { level: 'full', missing };
+  return { level: missing.length === advertised.size ? 'none' : 'partial', missing };
 }
 
 async function fetchDepartures(stopId: string): Promise<StopDepartures | null> {
