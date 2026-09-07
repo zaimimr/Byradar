@@ -155,7 +155,11 @@ export class Ui {
 
     input.addEventListener('input', () => this.runSearch());
     input.addEventListener('focus', () => this.runSearch());
-    input.addEventListener('blur', () => window.setTimeout(() => this.closeResults(), 120));
+    input.addEventListener('blur', () =>
+      window.setTimeout(() => {
+        if (document.activeElement !== input) this.closeResults();
+      }, 120),
+    );
 
     input.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowDown') {
