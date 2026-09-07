@@ -2,7 +2,7 @@
 Description=Nightly Byradar timetable rebuild
 
 [Timer]
-OnCalendar=*-*-* 03:30:00
+OnCalendar=*-*-* 04:45:00
 RandomizedDelaySec=15m
 Persistent=true
 

@@ -98,7 +98,19 @@ systemctl enable --now byradar-refresh.timer
 systemctl list-timers byradar-refresh.timer
 ```
 
-The timer fires at 03:30 Oslo time with up to 15 minutes of jitter.
+The timer fires at **04:45** Oslo time with up to 15 minutes of jitter.
+
+The hour matters and is not arbitrary. GTFS puts trips that run past midnight in
+the *previous* service day, as hours 24:00-27:00, and the server loads exactly
+one service date. So between midnight and the end of night service the running
+vehicles belong to yesterday's build, and rebuilding during that window empties
+the map: metro and tram disappear entirely and only GPS-sourced vehicles remain.
+Rebuilding at 04:45 leaves the night covered by yesterday's generation and swaps
+in the new day once night service has ended.
+
+The same trap applies to a manual run. `npm run build:data` after midnight
+builds the *new* service date and drops the night services that are still
+running. Pass `--date=` with yesterday's date if you need to rebuild at night.
 `Persistent=true` means a run missed while the box was down happens at the next
 boot.
 
