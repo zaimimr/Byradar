@@ -58,6 +58,7 @@ export interface Vehicle {
   toBearing: number;
   startMs: number;
   endMs: number;
+  lastChangeMs: number;
 }
 
 export interface TripCall {

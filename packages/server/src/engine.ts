@@ -1,6 +1,7 @@
 import { pointAtDistance } from './geometry.js';
 import { EMPTY_RT, delayAtSeq, isSkipped, type DelaySeries, type RtSnapshot } from './rt.js';
 import type { GpsVehicle } from './entur.js';
+import type { DestinationResolver } from './destinations.js';
 import { CALL_ARR, CALL_DEP, CALL_DIST, CALL_QUAY, CALL_SEQ, type Store } from './store.js';
 import { secondsIntoServiceDay } from './time.js';
 
@@ -45,6 +46,11 @@ const WINDOW_LEAD_SEC = 120;
 const WINDOW_TRAIL_SEC = 3600;
 const MAX_MODELLED_DELAY_SEC = 5400;
 
+const CATCH_UP_MPS = 14;
+const DRIFT_BACK_MPS = 7;
+const PLAUSIBLE_TOP_MPS = 60;
+const RESET_GAP_M = 1500;
+
 const GPS_CODESPACE_MODE_COLOR: Record<string, string> = {
   VYG: '#1B7A5A',
   VYX: '#1B7A5A',
@@ -75,8 +81,42 @@ export class Engine {
   private nextVid = 1;
   private vidByKey = new Map<string, number>();
   private current = new Map<number, VehicleState>();
+  private track = new Map<string, { dist: number; atMs: number }>();
+  private corrections = 0;
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly destinations: DestinationResolver,
+  ) {}
+
+  get correctionsAbsorbed(): number {
+    return this.corrections;
+  }
+
+  private slew(tripId: string, target: number, nowMs: number): number {
+    const prev = this.track.get(tripId);
+    if (!prev) {
+      this.track.set(tripId, { dist: target, atMs: nowMs });
+      return target;
+    }
+
+    const dtSec = Math.max(0.001, (nowMs - prev.atMs) / 1000);
+    const gap = target - prev.dist;
+
+    let next: number;
+    if (Math.abs(gap) > RESET_GAP_M) {
+      next = target;
+    } else {
+      const maxForward = (PLAUSIBLE_TOP_MPS + CATCH_UP_MPS) * dtSec;
+      const maxBackward = DRIFT_BACK_MPS * dtSec;
+      const step = Math.min(maxForward, Math.max(-maxBackward, gap));
+      next = prev.dist + step;
+      if (Math.abs(gap) > maxForward) this.corrections++;
+    }
+
+    this.track.set(tripId, { dist: next, atMs: nowMs });
+    return next;
+  }
 
   setTripUpdates(snap: RtSnapshot): void {
     this.rt = snap;
@@ -132,6 +172,13 @@ export class Engine {
       const placed = this.placeTrip(i, nowSec, series ?? null);
       if (!placed) continue;
 
+      const shape = store.shapes[trip.s];
+      if (!shape) continue;
+
+      const smoothed = this.slew(trip.id, placed.dist, nowMs);
+      const point = pointAtDistance(store.shapeData, shape, smoothed);
+      const totalDist = store.call(i, trip.n - 1, CALL_DIST) || 1;
+
       const route = store.routes[trip.r]!;
       const key = trip.id;
       const vid = this.vidFor(key);
@@ -147,12 +194,12 @@ export class Engine {
         mode: route.mode,
         color: route.color,
         headsign: trip.h,
-        lat: placed.lat,
-        lon: placed.lon,
-        bearing: placed.bearing,
+        lat: point.lat,
+        lon: point.lon,
+        bearing: point.bearing,
         delay: placed.delay,
         atStop: placed.atStop,
-        progress: placed.progress,
+        progress: Math.min(1, Math.max(0, smoothed / totalDist)),
         nextStop: placed.nextStop,
         tripId: trip.id,
       };
@@ -179,7 +226,7 @@ export class Engine {
         line: v.line,
         mode: v.mode,
         color,
-        headsign: v.destination,
+        headsign: this.destinations.resolve(v.journeyId, v.destination || v.lineName || ''),
         lat: v.lat,
         lon: v.lon,
         bearing: v.bearing ?? previous?.bearing ?? 0,
@@ -203,7 +250,10 @@ export class Engine {
     for (const vid of removed) {
       const state = this.current.get(vid);
       this.current.delete(vid);
-      if (state) this.vidByKey.delete(state.key);
+      if (state) {
+        this.vidByKey.delete(state.key);
+        if (state.tripId) this.track.delete(state.tripId);
+      }
     }
 
     const all = [...this.current.values()];
@@ -230,15 +280,7 @@ export class Engine {
     tripIdx: number,
     nowSec: number,
     series: DelaySeries | null,
-  ): {
-    lat: number;
-    lon: number;
-    bearing: number;
-    delay: number;
-    atStop: boolean;
-    progress: number;
-    nextStop: string;
-  } | null {
+  ): { dist: number; delay: number; atStop: boolean; nextStop: string } | null {
     const store = this.store;
     const trip = store.trips[tripIdx]!;
     const n = trip.n;
@@ -256,9 +298,6 @@ export class Engine {
     };
 
     if (nowSec < adjDep(0) || nowSec > adjArr(n - 1)) return null;
-
-    const shape = store.shapes[trip.s];
-    if (!shape) return null;
 
     let dist = -1;
     let atStop = false;
@@ -298,21 +337,10 @@ export class Engine {
       }
     }
 
-    const point = pointAtDistance(store.shapeData, shape, dist);
-    const totalDist = store.call(tripIdx, n - 1, CALL_DIST) || 1;
-
     let nextIdx = Math.min(n - 1, atStop ? segmentStart : segmentStart + 1);
     while (nextIdx < n - 1 && series && isSkipped(series, store.call(tripIdx, nextIdx, CALL_SEQ))) nextIdx++;
     const nextStop = store.quayName(store.call(tripIdx, nextIdx, CALL_QUAY));
 
-    return {
-      lat: point.lat,
-      lon: point.lon,
-      bearing: point.bearing,
-      delay: Math.round(delay),
-      atStop,
-      progress: Math.min(1, Math.max(0, dist / totalDist)),
-      nextStop,
-    };
+    return { dist, delay: Math.round(delay), atStop, nextStop };
   }
 }

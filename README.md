@@ -7,8 +7,9 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 ## What it shows
 
 - **206 lines** in the Oslo core, drawn from real route geometry with each operator's own line colours
-- **~750-800 vehicles** in motion at peak, each a chevron pointing the way it is travelling
-- **Punctuality ring** around every vehicle: blue early, green within 3 min, amber 3-7 min late, red beyond
+- **~750-850 vehicles** in motion at peak, each drawn as its own vehicle type - bus, tram, metro, train, ferry - turned to face its heading
+- **Punctuality rim** tracing each vehicle's silhouette: blue early, green within 3 min, amber 3-7 min late, red beyond. A second ring means a confirmed GPS fix
+- **Real 3D vehicles** when the map is tilted past 18 degrees: shaded extruded bodies sized per mode, with a punctuality marker on the ground
 - **Vehicle inspector**: click any vehicle for its line, destination, live deviation and the next stops with scheduled vs. expected times
 - **City pulse**: bar height is how many vehicles are running, bar colour is how punctual the network is right now
 - **3D buildings** on tilt, extruded from real OSM heights via MapTiler's vector tiles
@@ -28,6 +29,23 @@ So vehicles come from two different places, and the interface always says which:
 
 Measured against the raw feed, the modelled deviations track reality: an independent recompute gave a median of 155 s and mean of 201 s for in-motion Ruter trips where the running engine reported 150 s and 193 s.
 
+### Keeping motion continuous
+
+A delay correction must change a vehicle's *velocity*, never its *position*. Every 30 s the `trip-updates` poll lands and the schedule-derived position can shift by hundreds of metres at once; done naively that jolts the whole map in unison. Two mechanisms prevent it:
+
+- **Server-side slew limiting.** Position along the route is rate-limited: normal progress plus at most 14 m/s of catch-up, 7 m/s of drift-back, and a hard reset only past 1.5 km. A 300 m correction dissolves over ~20 s of imperceptibly fast running instead of a one-second lurch.
+- **Per-vehicle glide windows.** The browser interpolates each vehicle against its own observed update rate rather than a fixed tick, so Ruter vehicles glide over 1 s and GPS vehicles polled every 8 s glide over 8 s instead of freezing then jumping. Anything faster than 80 m/s for the elapsed window snaps rather than sliding.
+
+Measured over 50 consecutive ticks: median movement holds 5.6-7.0 m/s with no synchronised spike, no tick moves more than one vehicle over 250 m, and the page holds 60 fps in both 2D and tilted 3D.
+
+### Train destinations
+
+Vy never populates `destinationName` on the realtime feed - it is null for every rail vehicle - but each one carries a `serviceJourney` or `datedServiceJourney` id. Destinations resolve in three tiers:
+
+1. `trip_headsign` from the ingested Vy/Flytoget GTFS, keyed by journey id (~1360 journeys, no network call)
+2. Journey Planner v3 `datedServiceJourney`/`serviceJourney` lookup for journeys added after the GTFS snapshot, cached in memory with negative caching and request spacing
+3. The line's own name as a last resort, so nothing ever reads "unknown destination"
+
 ## Data sources
 
 | Feed | Use | Refresh |
@@ -35,6 +53,7 @@ Measured against the raw feed, the modelled deviations track reality: an indepen
 | Entur GTFS per codespace (`RUT`, `VYG`, `FLT`, `OST`, `NBU`) | Line geometry, timetables, stops | Daily |
 | Entur GTFS-RT `trip-updates` | Live per-stop deviations for Ruter | 30 s |
 | Entur vehicle-positions GraphQL (`realtime/v2`) | Real GPS in the Oslo bounding box | 8 s |
+| Entur Journey Planner v3 | Destination lookup for journeys missing from the GTFS snapshot | on demand, cached |
 | MapTiler `dataviz-v4-dark` | Basemap | — |
 
 `RUT` is the only feed used to generate moving vehicles. The others contribute line geometry only, since their vehicles already report real GPS and would otherwise be drawn twice.

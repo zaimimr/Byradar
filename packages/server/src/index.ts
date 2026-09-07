@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
 import type { WebSocket } from 'ws';
 
+import { DestinationResolver } from './destinations.js';
 import { Engine } from './engine.js';
 import { startGpsPoller } from './entur.js';
 import { ENV } from './env.js';
@@ -12,7 +13,8 @@ import { Store } from './store.js';
 import { encodeAdded, encodePositions } from './wire.js';
 
 const store = await Store.load();
-const engine = new Engine(store);
+const destinations = new DestinationResolver(store.journeyHeadsigns);
+const engine = new Engine(store, destinations);
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 await app.register(cors, { origin: true });
@@ -82,6 +84,8 @@ app.get('/health', async () => ({
   counts: store.meta.counts,
   rt: engine.rtInfo,
   gps: engine.gpsInfo,
+  destinations: destinations.stats,
+  correctionsAbsorbed: engine.correctionsAbsorbed,
   clients: clients.size,
   vehicles: engine.snapshot().length,
 }));

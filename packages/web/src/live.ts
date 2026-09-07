@@ -3,8 +3,10 @@ import type { Mode } from './types.js';
 
 const MAGIC = 0x4f534c31;
 const RECORD_BYTES = 16;
-const SNAP_METRES = 350;
 const METRES_PER_DEG_LAT = 111_320;
+const PLAUSIBLE_TOP_MPS = 80;
+const MIN_WINDOW_MS = 250;
+const MAX_WINDOW_MS = 12_000;
 const SOURCE_BY_CODE: VehicleSource[] = ['rt', 'sched', 'gps'];
 
 interface AddWire {
@@ -116,6 +118,7 @@ export class LiveFeed {
           toBearing: existing?.toBearing ?? 0,
           startMs: existing?.startMs ?? 0,
           endMs: existing?.endMs ?? 0,
+          lastChangeMs: existing?.lastChangeMs ?? 0,
         });
       }
       return;
@@ -125,7 +128,7 @@ export class LiveFeed {
 
   sample(nowMs: number): void {
     for (const vehicle of this.vehicles.values()) {
-      if (vehicle.endMs === 0) continue;
+      if (vehicle.lastChangeMs === 0) continue;
       const span = vehicle.endMs - vehicle.startMs;
       const f = span <= 0 ? 1 : Math.min(1, Math.max(0, (nowMs - vehicle.startMs) / span));
       vehicle.lat = vehicle.fromLat + (vehicle.toLat - vehicle.fromLat) * f;
@@ -153,10 +156,16 @@ export class LiveFeed {
       vehicle.delay = view.getInt16(o + 14, true);
       vehicle.seenAt = now;
 
-      const fresh = vehicle.endMs === 0;
-      const jumped = !fresh && roughMetres(vehicle.toLat, vehicle.toLon, lat, lon) > SNAP_METRES;
+      const fresh = vehicle.lastChangeMs === 0;
+      if (!fresh && lat === vehicle.toLat && lon === vehicle.toLon) continue;
 
-      if (fresh || jumped) {
+      const window = fresh
+        ? this.tickMs
+        : Math.min(MAX_WINDOW_MS, Math.max(MIN_WINDOW_MS, now - vehicle.lastChangeMs));
+      const travelled = fresh ? 0 : roughMetres(vehicle.toLat, vehicle.toLon, lat, lon);
+      const implausible = travelled > (window / 1000) * PLAUSIBLE_TOP_MPS;
+
+      if (fresh || implausible) {
         vehicle.fromLat = lat;
         vehicle.fromLon = lon;
         vehicle.fromBearing = bearing;
@@ -170,7 +179,8 @@ export class LiveFeed {
       vehicle.toLon = lon;
       vehicle.toBearing = bearing;
       vehicle.startMs = now;
-      vehicle.endMs = now + this.tickMs;
+      vehicle.endMs = now + window;
+      vehicle.lastChangeMs = now;
     }
 
     this.sample(now);

@@ -7,6 +7,8 @@ export interface GpsVehicle {
   line: string;
   lineRef: string;
   destination: string;
+  lineName: string;
+  journeyId: string | null;
   lat: number;
   lon: number;
   bearing: number | null;
@@ -22,6 +24,8 @@ const QUERY = `query OsloVehicles($bbox: BoundingBox!) {
     delay
     lastUpdatedEpochSecond
     destinationName
+    serviceJourney { id }
+    datedServiceJourney { id }
     codespace { codespaceId }
     line { lineRef publicCode lineName }
     location { latitude longitude }
@@ -35,6 +39,8 @@ interface RawVehicle {
   delay: number | null;
   lastUpdatedEpochSecond: number | null;
   destinationName: string | null;
+  serviceJourney: { id: string | null } | null;
+  datedServiceJourney: { id: string | null } | null;
   codespace: { codespaceId: string | null } | null;
   line: { lineRef: string | null; publicCode: string | null; lineName: string | null } | null;
   location: { latitude: number | null; longitude: number | null } | null;
@@ -82,6 +88,8 @@ export async function fetchGpsVehicles(bbox: {
       line: v.line?.publicCode ?? v.line?.lineName ?? '',
       lineRef: v.line?.lineRef ?? '',
       destination: v.destinationName ?? '',
+      lineName: v.line?.lineName ?? '',
+      journeyId: v.serviceJourney?.id ?? v.datedServiceJourney?.id ?? null,
       lat,
       lon,
       bearing: typeof v.bearing === 'number' ? v.bearing : null,

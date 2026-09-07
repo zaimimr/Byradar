@@ -56,6 +56,7 @@ export class Store {
     readonly quayNames: string[],
     readonly tripById: Map<string, number>,
     readonly window: { firstDep: Float64Array; lastArr: Float64Array },
+    readonly journeyHeadsigns: ReadonlyMap<string, string>,
   ) {}
 
   static async load(): Promise<Store> {
@@ -83,7 +84,25 @@ export class Store {
       lastArr[i] = callData[(t.o + t.n - 1) * CALL_STRIDE + CALL_ARR]!;
     }
 
-    return new Store(meta, routes, shapes, shapeData, trips, callData, quays.names, tripById, { firstDep, lastArr });
+    let journeyHeadsigns: ReadonlyMap<string, string> = new Map();
+    try {
+      journeyHeadsigns = new Map(Object.entries(await read<Record<string, string>>('journeys.json')));
+    } catch {
+      journeyHeadsigns = new Map();
+    }
+
+    return new Store(
+      meta,
+      routes,
+      shapes,
+      shapeData,
+      trips,
+      callData,
+      quays.names,
+      tripById,
+      { firstDep, lastArr },
+      journeyHeadsigns,
+    );
   }
 
   call(tripIdx: number, callIdx: number, field: number): number {

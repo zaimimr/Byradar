@@ -408,6 +408,16 @@ async function main(): Promise<void> {
   stopList.sort((a, b) => MODE_ORDER[b.modes[0]!] - MODE_ORDER[a.modes[0]!]);
   log(`stop places served: ${stopList.length}`);
 
+  const journeys: Record<string, string> = {};
+  for (const trip of keptTrips) {
+    if (trip.interpolate) continue;
+    const lastQuay = corpus.quayIds[trip.calls[trip.calls.length - 1]!];
+    const fallback = lastQuay ? corpus.quayName.get(lastQuay) ?? '' : '';
+    const headsign = trip.headsign || fallback;
+    if (headsign) journeys[trip.id] = headsign;
+  }
+  log(`journey destinations for geometry-only feeds: ${Object.keys(journeys).length}`);
+
   const shapeOrder = [...new Set(interpolatedTrips.map((t) => t.shapeId))].sort();
   const shapeIndex = new Map(shapeOrder.map((id, i) => [id, i] as const));
   const totalTriples = shapeOrder.reduce((n, id) => n + corpus.shapePoints.get(id)!.length, 0);
@@ -461,9 +471,12 @@ async function main(): Promise<void> {
       trips: interpolatedTrips.length,
       shapes: shapeOrder.length,
       calls: totalCalls,
+      journeyDestinations: 0,
     },
     modes: [...new Set(routeList.map((r) => r.mode))].sort((a, b) => MODE_ORDER[b] - MODE_ORDER[a]),
   };
+
+  meta.counts.journeyDestinations = Object.keys(journeys).length;
 
   const webRoutes = routeList.map((r) => ({
     id: r.id,
@@ -489,6 +502,7 @@ async function main(): Promise<void> {
       coords: corpus.quayIds.map((q) => corpus.quayLatLon.get(q) ?? [0, 0]),
     }),
   );
+  await writeFile(join(serverDir, 'journeys.json'), JSON.stringify(journeys));
   await writeFile(join(serverDir, 'shapes-index.json'), JSON.stringify(shapeMeta));
   await writeFile(join(serverDir, 'shapes.bin'), Buffer.from(shapeBuf.buffer, shapeBuf.byteOffset, shapeBuf.byteLength));
   await writeFile(join(serverDir, 'trips-index.json'), JSON.stringify(tripMeta));

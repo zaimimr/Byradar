@@ -1,5 +1,8 @@
 import { IconLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { SimpleMeshLayer } from '@deck.gl/mesh-layers';
 import type { Layer } from '@deck.gl/core';
+
+import { metresPerPixel, vehicleMesh } from './meshes.js';
 
 import { MODE_DRAW_ORDER, hexToRgb, punctuality } from './palette.js';
 import type { SpriteSet } from './sprites.js';
@@ -27,13 +30,15 @@ const STOP_MIN_ZOOM: Record<Mode, number> = {
 };
 
 const VEHICLE_SIZE: Record<Mode, number> = {
-  metro: 17,
-  rail: 16,
-  tram: 15,
-  ferry: 15,
-  bus: 11.5,
-  other: 11,
+  metro: 21,
+  rail: 23,
+  tram: 19,
+  ferry: 18,
+  bus: 15,
+  other: 14,
 };
+
+const RIM_GROWTH = 1.26;
 
 const HALO_DELAY_THRESHOLD = 420;
 
@@ -47,9 +52,22 @@ function busFade(zoom: number): number {
   return 0.4 + ((zoom - 10.6) / 2.4) * 0.6;
 }
 
+const PITCH_FOR_3D = 18;
+const MESH_TARGET_PX = 20;
+const MESH_MIN_ZOOM = 13;
+
+const VEHICLE_MATERIAL = {
+  ambient: 0.5,
+  diffuse: 0.65,
+  shininess: 28,
+  specularColor: [46, 52, 64] as [number, number, number],
+};
+
 export interface LayerInput {
   state: AppState;
   zoom: number;
+  pitch: number;
+  latitude: number;
   network: NetworkPath[];
   stops: StopPlace[];
   vehicles: Vehicle[];
@@ -82,7 +100,7 @@ function pathWeight(mode: Mode, zoom: number): number {
 }
 
 export function buildLayers(input: LayerInput): Layer[] {
-  const { state, zoom, network, stops, vehicles, sprites, frame } = input;
+  const { state, zoom, pitch, latitude, network, stops, vehicles, sprites, frame } = input;
   const layers: Layer[] = [];
 
   if (state.showNetwork) {
@@ -171,9 +189,9 @@ export function buildLayers(input: LayerInput): Layer[] {
         id: 'vehicle-halo',
         data: struggling,
         getPosition: (d) => [d.lon, d.lat],
-        getRadius: (d) => VEHICLE_SIZE[d.mode] * scale * 0.95,
+        getRadius: (d) => VEHICLE_SIZE[d.mode] * scale * 0.72,
         radiusUnits: 'pixels',
-        getFillColor: (d) => [...rgb(punctuality(d.delay).hex), 40] as [number, number, number, number],
+        getFillColor: (d) => [...rgb(punctuality(d.delay).hex), 42] as [number, number, number, number],
         stroked: false,
         filled: true,
         updateTriggers: { getFillColor: frame, getRadius: [frame, scale] },
@@ -182,46 +200,128 @@ export function buildLayers(input: LayerInput): Layer[] {
     );
   }
 
-  layers.push(
-    new ScatterplotLayer<Vehicle>({
-      id: 'vehicle-ring',
-      data: shown,
-      getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => VEHICLE_SIZE[d.mode] * scale * 0.46,
-      radiusUnits: 'pixels',
-      stroked: true,
-      filled: false,
-      getLineColor: (d) => [...rgb(punctuality(d.delay).hex), 215] as [number, number, number, number],
-      lineWidthUnits: 'pixels',
-      getLineWidth: 1.05,
-      updateTriggers: { getLineColor: frame, getRadius: [frame, scale] },
-      parameters: { depthCompare: 'always' },
-    }),
-  );
+  const fixed = shown.filter((v) => v.source === 'gps');
+  if (fixed.length) {
+    layers.push(
+      new ScatterplotLayer<Vehicle>({
+        id: 'vehicle-fix-ring',
+        data: fixed,
+        getPosition: (d) => [d.lon, d.lat],
+        getRadius: (d) => VEHICLE_SIZE[d.mode] * scale * 0.78,
+        radiusUnits: 'pixels',
+        stroked: true,
+        filled: false,
+        getLineColor: (d) => [...rgb(punctuality(d.delay).hex), 150] as [number, number, number, number],
+        lineWidthUnits: 'pixels',
+        getLineWidth: 1,
+        updateTriggers: { getLineColor: frame, getRadius: [frame, scale] },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+  }
 
-  layers.push(
-    new IconLayer<Vehicle>({
-      id: 'vehicle-body',
-      data: shown,
-      pickable: true,
-      iconAtlas: sprites.atlas,
-      iconMapping: sprites.mapping,
-      getIcon: (d) => (d.source === 'gps' ? 'solid' : 'hollow'),
-      getPosition: (d) => [d.lon, d.lat],
-      getSize: (d) => VEHICLE_SIZE[d.mode] * scale * (state.selected === d.vid ? 1.5 : 1),
-      sizeUnits: 'pixels',
-      getAngle: (d) => -d.bearing,
-      getColor: (d) => [...rgb(d.color), 255] as [number, number, number, number],
-      updateTriggers: {
-        getColor: frame,
-        getIcon: frame,
-        getAngle: frame,
-        getPosition: frame,
-        getSize: [frame, state.selected, scale],
-      },
-      parameters: { depthCompare: 'always' },
-    }),
-  );
+  const use3d = pitch >= PITCH_FOR_3D && zoom >= MESH_MIN_ZOOM;
+
+  if (use3d) {
+    const sizeScale = metresPerPixel(latitude, zoom) * MESH_TARGET_PX;
+    layers.push(
+      new ScatterplotLayer<Vehicle>({
+        id: 'vehicle-ground',
+        data: shown,
+        getPosition: (d) => [d.lon, d.lat],
+        getRadius: (d) => VEHICLE_SIZE[d.mode] * scale * 0.62,
+        radiusUnits: 'pixels',
+        stroked: true,
+        filled: true,
+        getFillColor: (d) => [...rgb(punctuality(d.delay).hex), 34] as [number, number, number, number],
+        getLineColor: (d) => [...rgb(punctuality(d.delay).hex), 190] as [number, number, number, number],
+        lineWidthUnits: 'pixels',
+        getLineWidth: 1.2,
+        updateTriggers: {
+          getFillColor: frame,
+          getLineColor: frame,
+          getPosition: frame,
+          getRadius: [frame, scale],
+        },
+      }),
+    );
+    for (const mode of MODE_DRAW_ORDER) {
+      const forMode = shown.filter((v) => v.mode === mode);
+      if (!forMode.length) continue;
+      layers.push(
+        new SimpleMeshLayer<Vehicle>({
+          id: `vehicle-mesh-${mode}`,
+          data: forMode,
+          pickable: true,
+          mesh: vehicleMesh(mode),
+          getPosition: (d) => [d.lon, d.lat],
+          getOrientation: (d) => [0, -d.bearing, 0],
+          getColor: (d) =>
+            [...rgb(d.color), d.source === 'gps' ? 255 : 226] as [number, number, number, number],
+          getScale: (d) => {
+            const s = state.selected === d.vid ? 1.4 : 1;
+            return [s, s, s];
+          },
+          sizeScale,
+          material: VEHICLE_MATERIAL,
+          updateTriggers: {
+            getPosition: frame,
+            getOrientation: frame,
+            getColor: frame,
+            getScale: [frame, state.selected],
+          },
+        }),
+      );
+    }
+  } else {
+    layers.push(
+      new IconLayer<Vehicle>({
+        id: 'vehicle-rim',
+        data: shown,
+        iconAtlas: sprites.atlas,
+        iconMapping: sprites.mapping,
+        getIcon: (d) => `${d.mode}-rim`,
+        getPosition: (d) => [d.lon, d.lat],
+        getSize: (d) =>
+          VEHICLE_SIZE[d.mode] * scale * RIM_GROWTH * (state.selected === d.vid ? 1.5 : 1),
+        sizeUnits: 'pixels',
+        getAngle: (d) => -d.bearing,
+        getColor: (d) => [...rgb(punctuality(d.delay).hex), 236] as [number, number, number, number],
+        updateTriggers: {
+          getColor: frame,
+          getIcon: frame,
+          getAngle: frame,
+          getPosition: frame,
+          getSize: [frame, state.selected, scale],
+        },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+    layers.push(
+      new IconLayer<Vehicle>({
+        id: 'vehicle-body',
+        data: shown,
+        pickable: true,
+        iconAtlas: sprites.atlas,
+        iconMapping: sprites.mapping,
+        getIcon: (d) => d.mode,
+        getPosition: (d) => [d.lon, d.lat],
+        getSize: (d) => VEHICLE_SIZE[d.mode] * scale * (state.selected === d.vid ? 1.5 : 1),
+        sizeUnits: 'pixels',
+        getAngle: (d) => -d.bearing,
+        getColor: (d) =>
+          [...rgb(d.color), d.source === 'gps' ? 255 : 224] as [number, number, number, number],
+        updateTriggers: {
+          getColor: frame,
+          getIcon: frame,
+          getAngle: frame,
+          getPosition: frame,
+          getSize: [frame, state.selected, scale],
+        },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+  }
 
   return layers;
 }
