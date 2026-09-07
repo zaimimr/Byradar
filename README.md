@@ -11,6 +11,7 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 - **Punctuality ring** around every vehicle: blue early, green within 3 min, amber 3-7 min late, red beyond
 - **Vehicle inspector**: click any vehicle for its line, destination, live deviation and the next stops with scheduled vs. expected times
 - **City pulse**: bar height is how many vehicles are running, bar colour is how punctual the network is right now
+- **3D buildings** on tilt, extruded from real OSM heights via MapTiler's vector tiles
 
 ## The data problem, and what this does about it
 
@@ -75,10 +76,10 @@ The server holds the whole service day in memory as typed arrays: 14 849 trips, 
 The hash carries the full view, so any map state is linkable:
 
 ```
-#lon=10.7522&lat=59.9139&z=12.2&modes=metro,tram,rail&stops=0&pitch=52
+#lon=10.7522&lat=59.9139&z=12.2&modes=metro,tram,rail&stops=0&pitch=52&buildings=1
 ```
 
-`modes`, `lines`, `stops`, `labels`, `pitch` and `brg` are all optional.
+`modes`, `lines`, `stops`, `labels`, `buildings`, `pitch` and `brg` are all optional. Buildings need a vector basemap that carries a `building` source-layer; the toggle hides itself when the basemap has none.
 
 ## Known limitations
 

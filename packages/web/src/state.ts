@@ -15,6 +15,7 @@ export interface AppState {
   showStops: boolean;
   showNetwork: boolean;
   showLabels: boolean;
+  showBuildings: boolean;
   selected: number | null;
 }
 
@@ -52,6 +53,7 @@ function readHash(): Partial<AppState> {
     showStops: params.get('stops') !== '0',
     showNetwork: params.get('lines') !== '0',
     showLabels: params.get('labels') !== '0',
+    showBuildings: params.get('buildings') === '1',
   };
 }
 
@@ -63,6 +65,7 @@ export function createState(): AppState {
     showStops: fromHash.showStops ?? true,
     showNetwork: fromHash.showNetwork ?? true,
     showLabels: fromHash.showLabels ?? true,
+    showBuildings: fromHash.showBuildings ?? false,
     selected: null,
   };
 }
@@ -84,6 +87,7 @@ export function syncHash(state: AppState): void {
     if (!state.showStops) params.set('stops', '0');
     if (!state.showNetwork) params.set('lines', '0');
     if (!state.showLabels) params.set('labels', '0');
+    if (state.showBuildings) params.set('buildings', '1');
     history.replaceState(null, '', `#${params.toString()}`);
   }, 220);
 }

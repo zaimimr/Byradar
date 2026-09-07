@@ -31,6 +31,7 @@ export interface UiCallbacks {
   onToggleStops: () => void;
   onToggleNetwork: () => void;
   onToggleLabels: () => void;
+  onToggleBuildings: () => void;
   onCloseInspector: () => void;
 }
 
@@ -38,7 +39,7 @@ export class Ui {
   private readonly modeButtons = new Map<Mode, HTMLButtonElement>();
   private readonly pulse: Array<{ count: number; delay: number }> = [];
   private tooltip: HTMLDivElement | null = null;
-  private toggles: Record<'stops' | 'network' | 'labels', HTMLButtonElement> | null = null;
+  private toggles: Record<'stops' | 'network' | 'labels' | 'buildings', HTMLButtonElement> | null = null;
 
   constructor(private readonly callbacks: UiCallbacks) {
     this.buildRail();
@@ -82,6 +83,7 @@ export class Ui {
       network: makeToggle('linjer', () => this.callbacks.onToggleNetwork()),
       stops: makeToggle('stopp', () => this.callbacks.onToggleStops()),
       labels: makeToggle('navn', () => this.callbacks.onToggleLabels()),
+      buildings: makeToggle('bygg', () => this.callbacks.onToggleBuildings()),
     };
   }
 
@@ -135,6 +137,7 @@ export class Ui {
       this.toggles.network.setAttribute('aria-pressed', String(state.showNetwork));
       this.toggles.stops.setAttribute('aria-pressed', String(state.showStops));
       this.toggles.labels.setAttribute('aria-pressed', String(state.showLabels));
+      this.toggles.buildings.setAttribute('aria-pressed', String(state.showBuildings));
     }
   }
 
@@ -267,6 +270,11 @@ export class Ui {
 
   hideInspector(): void {
     el<HTMLElement>('inspector').hidden = true;
+  }
+
+  setBuildingsSupported(supported: boolean): void {
+    if (!this.toggles) return;
+    this.toggles.buildings.hidden = !supported;
   }
 
   setBoot(label: string | null): void {

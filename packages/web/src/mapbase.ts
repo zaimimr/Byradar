@@ -58,3 +58,72 @@ export function calmBasemap(map: MapLibreMap): void {
     }
   }
 }
+
+const BUILDING_LAYER_ID = 'oslomap-buildings';
+
+interface BuildingSourceInfo {
+  source: string;
+  flatLayerIds: string[];
+}
+
+function findBuildingSource(map: MapLibreMap): BuildingSourceInfo | null {
+  const style = map.getStyle() as StyleSpecification | undefined;
+  const layers = style?.layers ?? [];
+  const flatLayerIds: string[] = [];
+  let source: string | null = null;
+  for (const layer of layers) {
+    if (!('source-layer' in layer) || layer['source-layer'] !== 'building') continue;
+    if (layer.id === BUILDING_LAYER_ID) continue;
+    flatLayerIds.push(layer.id);
+    if (!source && 'source' in layer && typeof layer.source === 'string') source = layer.source;
+  }
+  return source ? { source, flatLayerIds } : null;
+}
+
+export function supportsBuildings(map: MapLibreMap): boolean {
+  return findBuildingSource(map) !== null;
+}
+
+export function setBuildingVisibility(map: MapLibreMap, visible: boolean): void {
+  const info = findBuildingSource(map);
+  if (!info) return;
+
+  if (visible && !map.getLayer(BUILDING_LAYER_ID)) {
+    map.addLayer(
+      {
+        id: BUILDING_LAYER_ID,
+        type: 'fill-extrusion',
+        source: info.source,
+        'source-layer': 'building',
+        minzoom: 13.4,
+        paint: {
+          'fill-extrusion-color': [
+            'interpolate',
+            ['linear'],
+            ['coalesce', ['get', 'height'], ['get', 'render_height'], 8],
+            0,
+            '#151920',
+            25,
+            '#1c222b',
+            70,
+            '#252d38',
+            160,
+            '#313a48',
+          ],
+          'fill-extrusion-height': ['coalesce', ['get', 'height'], ['get', 'render_height'], 8],
+          'fill-extrusion-base': ['coalesce', ['get', 'height_min'], ['get', 'render_min_height'], 0],
+          'fill-extrusion-opacity': 0.88,
+          'fill-extrusion-vertical-gradient': true,
+        },
+      },
+      firstSymbolLayerId(map),
+    );
+  }
+
+  if (map.getLayer(BUILDING_LAYER_ID)) {
+    map.setLayoutProperty(BUILDING_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+  }
+  for (const id of info.flatLayerIds) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'none' : 'visible');
+  }
+}

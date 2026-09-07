@@ -4,7 +4,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 
 import { LiveFeed } from './live.js';
 import { buildLayers } from './layers.js';
-import { calmBasemap, createMap, setLabelVisibility } from './mapbase.js';
+import { calmBasemap, createMap, setBuildingVisibility, setLabelVisibility, supportsBuildings } from './mapbase.js';
 import { buildVehicleSprites } from './sprites.js';
 import { createState, syncHash } from './state.js';
 import { Ui } from './ui.js';
@@ -51,6 +51,12 @@ const ui = new Ui({
     ui.syncState(state);
     syncHash(state);
   },
+  onToggleBuildings: () => {
+    state.showBuildings = !state.showBuildings;
+    setBuildingVisibility(map, state.showBuildings);
+    ui.syncState(state);
+    syncHash(state);
+  },
   onCloseInspector: () => {
     state.selected = null;
     ui.hideInspector();
@@ -67,7 +73,9 @@ const overlay = new MapboxOverlay({ interleaved: false, layers: [] });
 map.on('load', () => {
   map.addControl(overlay);
   calmBasemap(map);
+  ui.setBuildingsSupported(supportsBuildings(map));
   if (!state.showLabels) setLabelVisibility(map, false);
+  if (state.showBuildings) setBuildingVisibility(map, true);
   needsRedraw = true;
 });
 
