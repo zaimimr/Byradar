@@ -43,7 +43,8 @@ mkdir -p "$D/.previous"
 
 restore() {
 	for d in server web; do
-		if [ ! -d "$D/$d" ] && [ -d "$D/.previous/$d" ]; then
+		if [ -d "$D/.previous/$d" ]; then
+			rm -rf "$D/$d"
 			mv "$D/.previous/$d" "$D/$d"
 		fi
 	done

@@ -10,6 +10,9 @@
 
 	reverse_proxy server:8787 {
 		health_uri /health
-		health_interval 30s
+		health_interval 5s
+		health_timeout 3s
+		lb_try_duration 20s
+		lb_try_interval 500ms
 	}
 }
