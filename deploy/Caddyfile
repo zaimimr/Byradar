@@ -16,3 +16,7 @@
 		lb_try_interval 500ms
 	}
 }
+
+www.{$SITE_ADDRESS} {
+	redir https://{$SITE_ADDRESS}{uri} permanent
+}

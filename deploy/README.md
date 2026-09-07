@@ -14,6 +14,23 @@ Cloudflare -> Caddy :443 -> server :8787 -> data volume
 
 ## Provision
 
+`provision.sh` does all of the below and is safe to re-run. On a fresh CX22 with
+Ubuntu 24.04:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/zaimimr/oslomap/main/deploy/provision.sh -o provision.sh
+bash provision.sh          # first run stops and tells you to fill in deploy/.env
+$EDITOR /opt/oslomap/deploy/.env
+bash provision.sh          # second run builds, seeds the data and starts everything
+```
+
+It sets the timezone, installs Docker, clones to `/opt/oslomap`, refuses to
+continue while `.env` still holds placeholder values, builds, runs the pipeline
+once only if the data volume is empty, starts the stack, installs the nightly
+timer and waits for `/health`.
+
+The manual equivalent, if you would rather do it by hand:
+
 1. Create the CX22 with Ubuntu 24.04, then on the box:
 
    ```sh
