@@ -500,8 +500,10 @@ async function main(): Promise<void> {
       ids: corpus.quayIds,
       names: corpus.quayIds.map((q) => corpus.quayName.get(q) ?? ''),
       coords: corpus.quayIds.map((q) => corpus.quayLatLon.get(q) ?? [0, 0]),
+      parents: corpus.quayIds.map((q) => corpus.quayParent.get(q) ?? q),
     }),
   );
+  await writeFile(join(serverDir, 'stops.json'), JSON.stringify(stopList));
   await writeFile(join(serverDir, 'journeys.json'), JSON.stringify(journeys));
   await writeFile(join(serverDir, 'shapes-index.json'), JSON.stringify(shapeMeta));
   await writeFile(join(serverDir, 'shapes.bin'), Buffer.from(shapeBuf.buffer, shapeBuf.byteOffset, shapeBuf.byteLength));

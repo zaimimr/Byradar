@@ -19,7 +19,7 @@ export const ENV = {
   host: process.env.HOST ?? '0.0.0.0',
   rtPollMs: int('RT_POLL_MS', 60_000),
   vmPollMs: int('VM_POLL_MS', 8_000),
-  tickMs: int('TICK_MS', 1_000),
+  tickMs: int('TICK_MS', 2_000),
   clientName: process.env.ET_CLIENT_NAME ?? 'oslomap-dev',
   dataDir: resolve(REPO_ROOT, 'data', 'server'),
   webDataDir: resolve(REPO_ROOT, 'data', 'web'),

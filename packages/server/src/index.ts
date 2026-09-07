@@ -3,30 +3,52 @@ import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import type { WebSocket } from 'ws';
 
+import { buildDepartureBoard, DepartureIndex } from './departures.js';
 import { DestinationResolver } from './destinations.js';
 import { Engine, type VehicleState } from './engine.js';
 import { startGpsPoller } from './entur.js';
 import { ENV, REPO_ROOT } from './env.js';
 import { startTripUpdatePoller } from './rt.js';
 import { Store } from './store.js';
+import { secondsIntoServiceDay } from './time.js';
 import { encodeAdded, encodePositions } from './wire.js';
 
 const store = await Store.load();
 const destinations = new DestinationResolver(store.journeyHeadsigns);
 const engine = new Engine(store, destinations);
+const departureIndex = DepartureIndex.build(store);
+
+const DATA_CACHE_CONTROL = 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
+const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+const HTML_CACHE_CONTROL = 'public, max-age=0, must-revalidate';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 await app.register(cors, { origin: true });
 await app.register(websocket, { options: { maxPayload: 1 << 22 } });
-await app.register(fastifyStatic, { root: ENV.webDataDir, prefix: '/data/' });
+await app.register(fastifyStatic, {
+  root: ENV.webDataDir,
+  prefix: '/data/',
+  cacheControl: false,
+  setHeaders: (res) => res.setHeader('Cache-Control', DATA_CACHE_CONTROL),
+});
 
 const WEB_DIST = resolve(REPO_ROOT, 'packages', 'web', 'dist');
 const serveWeb = existsSync(resolve(WEB_DIST, 'index.html'));
 if (serveWeb) {
-  await app.register(fastifyStatic, { root: WEB_DIST, prefix: '/', decorateReply: false });
+  await app.register(fastifyStatic, {
+    root: WEB_DIST,
+    prefix: '/',
+    decorateReply: false,
+    cacheControl: false,
+    setHeaders: (res, path) =>
+      res.setHeader(
+        'Cache-Control',
+        path.includes(`${sep}assets${sep}`) ? ASSET_CACHE_CONTROL : HTML_CACHE_CONTROL,
+      ),
+  });
 }
 
 interface Viewport {
@@ -44,7 +66,12 @@ function inViewport(view: Viewport | null, lon: number, lat: number): boolean {
 }
 
 app.log.info(
-  { serviceDate: store.meta.serviceDate, ...store.meta.counts },
+  {
+    serviceDate: store.meta.serviceDate,
+    ...store.meta.counts,
+    departureIndex: departureIndex.size,
+    departureIndexMs: +departureIndex.buildMs.toFixed(1),
+  },
   'static network loaded',
 );
 
@@ -68,6 +95,18 @@ const stopGps = startGpsPoller({
   onError: (err) => app.log.error({ err }, 'gps poll failed'),
 });
 
+const HELLO_PAYLOAD = JSON.stringify({ t: 'hello', meta: store.meta, tickMs: ENV.tickMs });
+
+let addAllPayload: string | null = null;
+let positionsPayload = Buffer.from(encodePositions([], Date.now()));
+
+function snapshotAddPayload(): string {
+  if (addAllPayload === null) {
+    addAllPayload = JSON.stringify({ t: 'add', v: encodeAdded(engine.snapshot()) });
+  }
+  return addAllPayload;
+}
+
 function broadcast(payload: string): void {
   for (const socket of clients.keys()) {
     if (socket.readyState === socket.OPEN) socket.send(payload);
@@ -75,10 +114,14 @@ function broadcast(payload: string): void {
 }
 
 function broadcastPositions(all: VehicleState[], nowMs: number): void {
+  positionsPayload = Buffer.from(encodePositions(all, nowMs));
   for (const [socket, view] of clients) {
     if (socket.readyState !== socket.OPEN) continue;
-    const visible = view ? all.filter((v) => inViewport(view, v.lon, v.lat)) : all;
-    socket.send(Buffer.from(encodePositions(visible, nowMs)));
+    if (!view) {
+      socket.send(positionsPayload);
+      continue;
+    }
+    socket.send(Buffer.from(encodePositions(all.filter((v) => inViewport(view, v.lon, v.lat)), nowMs)));
   }
 }
 
@@ -86,6 +129,7 @@ let lastStatsLog = 0;
 
 const ticker = setInterval(() => {
   const result = engine.tick();
+  if (result.added.length || result.removed.length) addAllPayload = null;
   if (!engine.hasRealtime) return;
   if (clients.size > 0) {
     if (result.added.length) {
@@ -142,12 +186,28 @@ app.get<{ Params: { vid: string } }>('/vehicles/:vid', async (req, reply) => {
   return { vehicle, route: store.routes[meta.r], calls };
 });
 
+const DEFAULT_DEPARTURE_LIMIT = 12;
+const MAX_DEPARTURE_LIMIT = 50;
+
+app.get<{ Params: { stopPlaceId: string }; Querystring: { limit?: string } }>(
+  '/stops/:stopPlaceId/departures',
+  async (req, reply) => {
+    const place = store.stopPlaceIdxById.get(req.params.stopPlaceId);
+    if (place === undefined) return reply.code(404).send({ error: 'unknown stop' });
+    const requested = Number(req.query.limit);
+    const limit = Number.isFinite(requested)
+      ? Math.min(MAX_DEPARTURE_LIMIT, Math.max(1, Math.trunc(requested)))
+      : DEFAULT_DEPARTURE_LIMIT;
+    const nowSec = secondsIntoServiceDay(store.meta.serviceDate);
+    return buildDepartureBoard(store, engine, departureIndex, place, nowSec, limit);
+  },
+);
+
 app.get('/live', { websocket: true }, (socket) => {
   clients.set(socket, null);
-  const all = engine.snapshot();
-  socket.send(JSON.stringify({ t: 'hello', meta: store.meta, tickMs: ENV.tickMs }));
-  socket.send(JSON.stringify({ t: 'add', v: encodeAdded(all) }));
-  socket.send(Buffer.from(encodePositions(all, Date.now())));
+  socket.send(HELLO_PAYLOAD);
+  socket.send(snapshotAddPayload());
+  socket.send(positionsPayload);
 
   socket.on('message', (raw: Buffer) => {
     try {

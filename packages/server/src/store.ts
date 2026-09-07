@@ -28,6 +28,14 @@ export interface TripMeta {
   n: number;
 }
 
+export interface StopPlaceMeta {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  modes: string[];
+}
+
 export interface DataMeta {
   generatedAt: string;
   serviceDate: string;
@@ -45,6 +53,15 @@ export const CALL_QUAY = 4;
 
 export const SHAPE_STRIDE = 3;
 
+export const NO_STOP_PLACE = -1;
+
+interface QuaysFile {
+  ids: string[];
+  names: string[];
+  coords?: Array<[number, number]>;
+  parents?: string[];
+}
+
 export class Store {
   private constructor(
     readonly meta: DataMeta,
@@ -57,17 +74,28 @@ export class Store {
     readonly tripById: Map<string, number>,
     readonly window: { firstDep: Float64Array; lastArr: Float64Array },
     readonly journeyHeadsigns: ReadonlyMap<string, string>,
+    readonly stopPlaces: StopPlaceMeta[],
+    readonly stopPlaceIdxById: ReadonlyMap<string, number>,
+    readonly quayStopPlace: Int32Array,
   ) {}
 
   static async load(): Promise<Store> {
     const dir = ENV.dataDir;
     const read = async <T>(name: string): Promise<T> => JSON.parse(await readFile(join(dir, name), 'utf8')) as T;
+    const readOptional = async <T>(name: string, fallback: T): Promise<T> => {
+      try {
+        return await read<T>(name);
+      } catch {
+        return fallback;
+      }
+    };
 
     const meta = await read<DataMeta>('meta.json');
     const routes = await read<RouteMeta[]>('routes.json');
     const shapes = await read<ShapeMeta[]>('shapes-index.json');
     const trips = await read<TripMeta[]>('trips-index.json');
-    const quays = await read<{ ids: string[]; names: string[] }>('quays.json');
+    const quays = await read<QuaysFile>('quays.json');
+    const stopPlaces = await readOptional<StopPlaceMeta[]>('stops.json', []);
 
     const shapeBuf = await readFile(join(dir, 'shapes.bin'));
     const callBuf = await readFile(join(dir, 'trips.bin'));
@@ -84,12 +112,20 @@ export class Store {
       lastArr[i] = callData[(t.o + t.n - 1) * CALL_STRIDE + CALL_ARR]!;
     }
 
-    let journeyHeadsigns: ReadonlyMap<string, string> = new Map();
-    try {
-      journeyHeadsigns = new Map(Object.entries(await read<Record<string, string>>('journeys.json')));
-    } catch {
-      journeyHeadsigns = new Map();
+    const stopPlaceIdxById = new Map<string, number>();
+    for (let i = 0; i < stopPlaces.length; i++) stopPlaceIdxById.set(stopPlaces[i]!.id, i);
+
+    const quayStopPlace = new Int32Array(quays.ids.length).fill(NO_STOP_PLACE);
+    const parents = quays.parents;
+    if (parents) {
+      for (let i = 0; i < quays.ids.length; i++) {
+        quayStopPlace[i] = stopPlaceIdxById.get(parents[i] ?? '') ?? NO_STOP_PLACE;
+      }
     }
+
+    const journeyHeadsigns = new Map(
+      Object.entries(await readOptional<Record<string, string>>('journeys.json', {})),
+    );
 
     return new Store(
       meta,
@@ -102,6 +138,9 @@ export class Store {
       tripById,
       { firstDep, lastArr },
       journeyHeadsigns,
+      stopPlaces,
+      stopPlaceIdxById,
+      quayStopPlace,
     );
   }
 
@@ -112,5 +151,9 @@ export class Store {
 
   quayName(quayIdx: number): string {
     return this.quayNames[quayIdx] ?? '';
+  }
+
+  stopPlaceOfQuay(quayIdx: number): number {
+    return this.quayStopPlace[quayIdx] ?? NO_STOP_PLACE;
   }
 }

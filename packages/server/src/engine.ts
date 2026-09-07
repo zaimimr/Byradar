@@ -155,6 +155,15 @@ export class Engine {
     return this.current.get(vid);
   }
 
+  vehicleForTrip(tripId: string): VehicleState | undefined {
+    const vid = this.vidByKey.get(tripId);
+    return vid === undefined ? undefined : this.current.get(vid);
+  }
+
+  seriesForTrip(tripId: string): DelaySeries | null {
+    return this.rt.byTrip.get(tripId) ?? null;
+  }
+
   tick(nowMs = Date.now()): TickResult {
     const started = performance.now();
     const store = this.store;
