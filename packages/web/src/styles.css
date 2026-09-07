@@ -2,6 +2,7 @@
   --ink: #07090c;
   --slab: rgba(12, 15, 20, 0.9);
   --slab-raised: rgba(19, 23, 30, 0.94);
+  --slab-menu: rgba(14, 18, 24, 0.975);
   --hair: rgba(233, 238, 247, 0.09);
   --hair-strong: rgba(233, 238, 247, 0.2);
   --edge-light: rgba(255, 255, 255, 0.07);
@@ -924,7 +925,7 @@ body {
 }
 
 .search__results {
-  background: var(--slab-raised);
+  background: var(--slab-menu);
   backdrop-filter: blur(24px) saturate(1.1);
   position: absolute;
   top: calc(100% + 6px);

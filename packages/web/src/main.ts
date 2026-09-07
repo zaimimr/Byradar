@@ -33,6 +33,7 @@ const VEHICLE_LAYER_IDS = ['vehicle-hull', 'vehicle-bubble'];
 const DATA = DATA_URL;
 const API = API_URL;
 const state = createState();
+const initialLineId = readHashLineId();
 const sprites = buildVehicleSprites();
 
 let network: NetworkPath[] = [];
@@ -168,9 +169,8 @@ async function loadStatic(): Promise<void> {
 }
 
 function restoreLineFilter(): void {
-  const wanted = readHashLineId();
-  if (!wanted) return;
-  const idx = routes.findIndex((r) => r.id === wanted);
+  if (!initialLineId) return;
+  const idx = routes.findIndex((r) => r.id === initialLineId);
   if (idx < 0) return;
   state.line = { idx, route: routes[idx]! };
   ui.setLineFilter(state.line);
@@ -352,6 +352,12 @@ if (import.meta.env.DEV) {
       },
       get vehicles() {
         return vehicles;
+      },
+      get routes() {
+        return routes;
+      },
+      get overlay() {
+        return overlay;
       },
     },
   });
