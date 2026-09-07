@@ -12,6 +12,9 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 - **Vehicle inspector**: click any vehicle for its line, destination, live deviation and the next stops with scheduled vs. expected times
 - **City pulse**: bar height is how many vehicles are running, bar colour is how punctual the network is right now
 - **3D buildings** on tilt, extruded from real OSM heights via MapTiler's vector tiles
+- **Search** over every line and stop in one box, folding `æøå` so `majorstua` finds Majorstuen; picking a line filters the map to it, picking a stop opens its board
+- **Departure boards** on any stop, merging live and scheduled departures across every quay that shares the stop's name
+- **Find my position**, with an accuracy circle and a readable message when the fix is denied, unavailable or outside Oslo
 
 ## The data problem, and what this does about it
 
@@ -65,6 +68,8 @@ Vy never populates `destinationName` on the realtime feed - it is null for every
 
 `RUT` is the only feed used to generate moving vehicles. The others contribute line geometry only, since their vehicles already report real GPS and would otherwise be drawn twice.
 
+One consequence is visible in the UI: only Ruter is ingested with stop times, so 30 rail-only stop places, Oslo S among them, have no timetable behind them at all. Their departure board says so plainly rather than rendering an empty list, and a stop that serves both trains and buses shows its buses alongside a note naming the mode that is missing.
+
 ## Running it
 
 ```bash
@@ -85,6 +90,12 @@ Without a MapTiler key the basemap falls back to CARTO dark-matter, which needs 
 ```
 
 Pass `--force` to bypass the 6-hour zip cache, or `--date=2026-09-14` to build a different service date.
+
+## Deploying
+
+`deploy/` holds a single-box setup: multi-stage Dockerfile, compose file, Caddy for automatic TLS, and a systemd timer that refreshes the timetable nightly. The refresh stages a whole generation into `data/.staging`, verifies all 13 artifacts, keeps the previous one in `data/.previous`, and restarts the server only after a clean swap, so a failed run leaves the box on the timetable it already had.
+
+The image must be built for `linux/amd64`; the compose file pins it so a build on an arm64 Mac cannot silently ship the wrong architecture. See `deploy/README.md` for provisioning and the measured memory budget.
 
 ## Layout
 
