@@ -4,7 +4,7 @@ import type { Layer } from '@deck.gl/core';
 import { MODE_DRAW_ORDER, hexToRgb, punctuality } from './palette.js';
 import { FOOTPRINT_ZOOM, isLight, lighten, metresPerPixel, realLengthPx } from './sizes.js';
 import type { SpriteSet } from './sprites.js';
-import type { AppState } from './state.js';
+import type { AppState, LineFilter } from './state.js';
 import type { Mode, NetworkPath, StopPlace, Vehicle } from './types.js';
 
 const CASING: [number, number, number, number] = [6, 8, 12, 190];
@@ -32,6 +32,8 @@ const GLYPH_PX = 16;
 const ARROW_PX = 9.5;
 const LABEL_ZOOM = 14.2;
 const HALO_DELAY = 420;
+const FIX_COLOR: [number, number, number] = [88, 182, 221];
+const FIX_MIN_ACCURACY_M = 12;
 
 export interface LayerInput {
   state: AppState;
@@ -87,14 +89,83 @@ function stopColor(mode: Mode): string {
   return map[mode] ?? '#8892A6';
 }
 
+export function onLine(vehicle: Vehicle, filter: LineFilter): boolean {
+  if (vehicle.routeIdx >= 0) return vehicle.routeIdx === filter.idx;
+  return vehicle.line === filter.route.line && vehicle.mode === filter.route.mode;
+}
+
 export function buildLayers(input: LayerInput): Layer[] {
+  const layers = buildMapLayers(input);
+  appendFixLayers(layers, input.state);
+  return layers;
+}
+
+function appendFixLayers(layers: Layer[], state: AppState): void {
+  const fix = state.fix;
+  if (!fix) return;
+
+  layers.push(
+    new ScatterplotLayer<typeof fix>({
+      id: 'fix-accuracy',
+      data: [fix],
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => Math.max(FIX_MIN_ACCURACY_M, d.accuracy),
+      radiusUnits: 'meters',
+      radiusMinPixels: 14,
+      stroked: true,
+      filled: true,
+      getFillColor: [...FIX_COLOR, 28] as [number, number, number, number],
+      getLineColor: [...FIX_COLOR, 110] as [number, number, number, number],
+      lineWidthUnits: 'pixels',
+      getLineWidth: 1,
+      updateTriggers: { getRadius: fix.accuracy, getPosition: [fix.lat, fix.lon] },
+      parameters: { depthCompare: 'always' },
+    }),
+  );
+
+  layers.push(
+    new ScatterplotLayer<typeof fix>({
+      id: 'fix-glow',
+      data: [fix],
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 13,
+      radiusUnits: 'pixels',
+      stroked: false,
+      filled: true,
+      getFillColor: [...FIX_COLOR, 70] as [number, number, number, number],
+      updateTriggers: { getPosition: [fix.lat, fix.lon] },
+      parameters: { depthCompare: 'always' },
+    }),
+  );
+
+  layers.push(
+    new ScatterplotLayer<typeof fix>({
+      id: 'fix-point',
+      data: [fix],
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 6.5,
+      radiusUnits: 'pixels',
+      stroked: true,
+      filled: true,
+      getFillColor: [...FIX_COLOR, 255] as [number, number, number, number],
+      getLineColor: [255, 255, 255, 240],
+      lineWidthUnits: 'pixels',
+      getLineWidth: 2.2,
+      updateTriggers: { getPosition: [fix.lat, fix.lon] },
+      parameters: { depthCompare: 'always' },
+    }),
+  );
+}
+
+function buildMapLayers(input: LayerInput): Layer[] {
   const { state, zoom, latitude, mapBearing, network, stops, vehicles, sprites, frame } = input;
   const layers: Layer[] = [];
+  const lineFilter = state.line;
 
   if (state.showNetwork) {
     for (const mode of MODE_DRAW_ORDER) {
       if (!state.modes.has(mode)) continue;
-      const paths = network.filter((p) => p.m === mode);
+      const paths = network.filter((p) => p.m === mode && (!lineFilter || p.r === lineFilter.idx));
       if (!paths.length) continue;
       const weight = pathWeight(mode, zoom);
 
@@ -149,6 +220,9 @@ export function buildLayers(input: LayerInput): Layer[] {
         new ScatterplotLayer<StopPlace>({
           id: 'stops',
           data: visible,
+          pickable: true,
+          autoHighlight: true,
+          highlightColor: [88, 182, 221, 90],
           getPosition: (d) => [d.lon, d.lat],
           getRadius: (d) => (d.modes[0] === 'bus' ? 11 : 24),
           radiusUnits: 'meters',
@@ -167,7 +241,9 @@ export function buildLayers(input: LayerInput): Layer[] {
     }
   }
 
-  const shown = vehicles.filter((v) => state.modes.has(v.mode));
+  const shown = vehicles.filter(
+    (v) => state.modes.has(v.mode) && (!lineFilter || onLine(v, lineFilter)),
+  );
   if (!shown.length) return layers;
 
   const mpp = metresPerPixel(latitude, zoom);

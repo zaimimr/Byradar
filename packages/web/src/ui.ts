@@ -1,14 +1,17 @@
 import {
   MODE_LABEL,
   MODE_RAIL_ORDER,
+  MODE_SHORT,
   MODE_SWATCH,
   PUNCTUALITY,
   formatDelay,
   formatServiceTime,
   punctuality,
 } from './palette.js';
-import type { AppState } from './state.js';
-import type { DataMeta, Mode, Vehicle, VehicleDetail } from './types.js';
+import { flatten, search } from './search.js';
+import type { LineHit, SearchHit, SearchIndex, StopGroup, StopHit } from './search.js';
+import type { AppState, LineFilter } from './state.js';
+import type { DataMeta, Departure, Mode, Vehicle, VehicleDetail } from './types.js';
 
 const OSLO_CLOCK = new Intl.DateTimeFormat('nb-NO', {
   timeZone: 'Europe/Oslo',
@@ -19,6 +22,15 @@ const OSLO_CLOCK = new Intl.DateTimeFormat('nb-NO', {
 });
 
 const PULSE_SAMPLES = 56;
+const FLASH_MS = 6000;
+const CROSSHAIR = `<svg class="rail__glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" stroke="none" /><circle cx="8" cy="8" r="5.6" fill="none" /><path d="M8 0.4v2.2M8 13.4v2.2M0.4 8h2.2M13.4 8h2.2" fill="none" /></svg>`;
+
+export type LocateState = 'idle' | 'busy' | 'active';
+
+export type DeparturesState =
+  | { phase: 'loading' }
+  | { phase: 'failed' }
+  | { phase: 'ready'; departures: Departure[] };
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -33,6 +45,10 @@ export interface UiCallbacks {
   onToggleLabels: () => void;
   onToggleBuildings: () => void;
   onCloseInspector: () => void;
+  onLocate: () => void;
+  onPickLine: (hit: LineHit) => void;
+  onPickStop: (hit: StopHit) => void;
+  onClearLine: () => void;
 }
 
 export class Ui {
@@ -40,11 +56,18 @@ export class Ui {
   private readonly pulse: Array<{ count: number; delay: number }> = [];
   private tooltip: HTMLDivElement | null = null;
   private toggles: Record<'stops' | 'network' | 'labels' | 'buildings', HTMLButtonElement> | null = null;
+  private locateButton: HTMLButtonElement | null = null;
+  private flash: HTMLParagraphElement | null = null;
+  private flashTimer: number | undefined;
+  private searchIndex: SearchIndex | null = null;
+  private hits: SearchHit[] = [];
+  private activeHit = -1;
 
   constructor(private readonly callbacks: UiCallbacks) {
     this.buildRail();
     this.buildLegendScale();
     this.buildPulse();
+    this.buildSearch();
     el<HTMLButtonElement>('inspector-close').addEventListener('click', () => this.callbacks.onCloseInspector());
     this.startClock();
   }
@@ -85,6 +108,26 @@ export class Ui {
       labels: makeToggle('navn', () => this.callbacks.onToggleLabels()),
       buildings: makeToggle('bygg', () => this.callbacks.onToggleBuildings()),
     };
+
+    const actionDivider = document.createElement('div');
+    actionDivider.className = 'rail__divider';
+    rail.appendChild(actionDivider);
+
+    const locate = document.createElement('button');
+    locate.type = 'button';
+    locate.className = 'rail__action';
+    locate.dataset.state = 'idle';
+    locate.innerHTML = `${CROSSHAIR}<span>min posisjon</span>`;
+    locate.addEventListener('click', () => this.callbacks.onLocate());
+    rail.appendChild(locate);
+    this.locateButton = locate;
+
+    const flash = document.createElement('p');
+    flash.className = 'rail__flash';
+    flash.setAttribute('role', 'status');
+    flash.hidden = true;
+    rail.appendChild(flash);
+    this.flash = flash;
   }
 
   private buildLegendScale(): void {
@@ -105,6 +148,188 @@ export class Ui {
       bar.style.setProperty('--c', '#2a3240');
       track.appendChild(bar);
     }
+  }
+
+  private buildSearch(): void {
+    const input = el<HTMLInputElement>('search-input');
+
+    input.addEventListener('input', () => this.runSearch());
+    input.addEventListener('focus', () => this.runSearch());
+    input.addEventListener('blur', () => window.setTimeout(() => this.closeResults(), 120));
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        this.moveHit(1);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        this.moveHit(-1);
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        this.chooseHit(this.activeHit < 0 ? 0 : this.activeHit);
+        return;
+      }
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      if (input.value) {
+        input.value = '';
+        this.runSearch();
+        return;
+      }
+      this.closeResults();
+      input.blur();
+    });
+
+    window.addEventListener('keydown', (event) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      event.preventDefault();
+      input.focus();
+      input.select();
+    });
+  }
+
+  setSearchIndex(index: SearchIndex): void {
+    this.searchIndex = index;
+  }
+
+  private runSearch(): void {
+    const input = el<HTMLInputElement>('search-input');
+    const panel = el<HTMLElement>('search-results');
+    if (!this.searchIndex || !input.value.trim()) {
+      this.hits = [];
+      this.activeHit = -1;
+      this.closeResults();
+      return;
+    }
+
+    const results = search(this.searchIndex, input.value);
+    this.hits = flatten(results);
+    this.activeHit = this.hits.length ? 0 : -1;
+
+    if (!this.hits.length) {
+      panel.innerHTML = '<p class="search__empty">ingen treff</p>';
+    } else {
+      const sections: string[] = [];
+      if (results.lines.length) {
+        sections.push('<p class="search__group">Linjer</p>');
+        sections.push(results.lines.map((hit) => this.lineRow(hit)).join(''));
+      }
+      if (results.stops.length) {
+        sections.push('<p class="search__group">Stopp</p>');
+        sections.push(results.stops.map((hit) => this.stopRow(hit)).join(''));
+      }
+      panel.innerHTML = sections.join('');
+      for (const node of panel.querySelectorAll<HTMLButtonElement>('.search__hit')) {
+        const at = Number(node.dataset.at);
+        node.addEventListener('mousedown', (event) => event.preventDefault());
+        node.addEventListener('click', () => this.chooseHit(at));
+        node.addEventListener('mouseenter', () => this.highlightHit(at));
+      }
+    }
+
+    panel.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    this.paintActiveHit();
+  }
+
+  private lineRow(hit: LineHit): string {
+    const at = this.hits.indexOf(hit);
+    return `<button class="search__hit" type="button" role="option" aria-selected="false" data-at="${at}">
+      <span class="badge" style="--c:${hit.route.color};--tc:${textOn(hit.route.color)}">${escapeHtml(hit.route.line)}</span>
+      <span class="search__hit-name">${escapeHtml(hit.route.name)}</span>
+      <span class="search__hit-modes"></span>
+    </button>`;
+  }
+
+  private stopRow(hit: StopHit): string {
+    const at = this.hits.indexOf(hit);
+    const primary = hit.group.modes[0] ?? 'other';
+    const modes = hit.group.modes.map((m) => MODE_SHORT[m]).join('·');
+    return `<button class="search__hit" type="button" role="option" aria-selected="false" data-at="${at}">
+      <span class="search__node" style="--c:${MODE_SWATCH[primary]}"></span>
+      <span class="search__hit-name">${escapeHtml(hit.group.name)}</span>
+      <span class="search__hit-modes">${escapeHtml(modes)}</span>
+    </button>`;
+  }
+
+  private moveHit(delta: number): void {
+    if (!this.hits.length) return;
+    const count = this.hits.length;
+    this.activeHit = (((this.activeHit < 0 ? 0 : this.activeHit + delta) % count) + count) % count;
+    this.paintActiveHit();
+  }
+
+  private highlightHit(at: number): void {
+    this.activeHit = at;
+    this.paintActiveHit();
+  }
+
+  private paintActiveHit(): void {
+    const nodes = el<HTMLElement>('search-results').querySelectorAll<HTMLElement>('.search__hit');
+    nodes.forEach((node, i) => {
+      const on = i === this.activeHit;
+      node.setAttribute('aria-selected', String(on));
+      if (on) node.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  private chooseHit(at: number): void {
+    const hit = this.hits[at];
+    if (!hit) return;
+    const input = el<HTMLInputElement>('search-input');
+    input.value = hit.kind === 'line' ? `${hit.route.line} ${hit.route.name}` : hit.group.name;
+    input.blur();
+    this.closeResults();
+    if (hit.kind === 'line') this.callbacks.onPickLine(hit);
+    else this.callbacks.onPickStop(hit);
+  }
+
+  private closeResults(): void {
+    const panel = el<HTMLElement>('search-results');
+    panel.hidden = true;
+    panel.innerHTML = '';
+    el<HTMLInputElement>('search-input').setAttribute('aria-expanded', 'false');
+  }
+
+  setLineFilter(filter: LineFilter | null): void {
+    const node = el<HTMLElement>('search-filter');
+    if (!filter) {
+      node.hidden = true;
+      node.innerHTML = '';
+      return;
+    }
+    node.style.setProperty('--c', filter.route.color);
+    node.innerHTML = `<span>viser <b>linje ${escapeHtml(filter.route.line)}</b></span>
+      <button class="search__filter-clear" type="button">vis alle</button>`;
+    node.querySelector('button')?.addEventListener('click', () => this.callbacks.onClearLine());
+    node.hidden = false;
+  }
+
+  clearSearchQuery(): void {
+    el<HTMLInputElement>('search-input').value = '';
+  }
+
+  setLocateState(state: LocateState): void {
+    if (this.locateButton) this.locateButton.dataset.state = state;
+  }
+
+  setFlash(message: string | null): void {
+    if (!this.flash) return;
+    if (this.flashTimer !== undefined) clearTimeout(this.flashTimer);
+    if (!message) {
+      this.flash.hidden = true;
+      this.flash.textContent = '';
+      return;
+    }
+    this.flash.textContent = message;
+    this.flash.hidden = false;
+    this.flashTimer = window.setTimeout(() => this.setFlash(null), FLASH_MS);
   }
 
   private startClock(): void {
@@ -268,6 +493,22 @@ export class Ui {
     panel.hidden = false;
   }
 
+  renderStop(group: StopGroup, state: DeparturesState): void {
+    const panel = el<HTMLElement>('inspector');
+    const body = el<HTMLElement>('inspector-body');
+    const chips = group.modes
+      .map((m) => `<span class="stop__mode" style="--c:${MODE_SWATCH[m]}">${MODE_LABEL[m]}</span>`)
+      .join('');
+
+    body.innerHTML = `
+      <div class="veh__mode">Stoppested</div>
+      <p class="veh__head">${escapeHtml(group.name)}</p>
+      <div class="stop__modes">${chips}</div>
+      <div class="stop__body">${departuresBody(group, state)}</div>
+    `;
+    panel.hidden = false;
+  }
+
   hideInspector(): void {
     el<HTMLElement>('inspector').hidden = true;
   }
@@ -285,6 +526,35 @@ export class Ui {
     }
     el<HTMLElement>('boot-label').textContent = label;
   }
+}
+
+function departuresBody(group: StopGroup, state: DeparturesState): string {
+  if (state.phase === 'loading') return '<p class="inspector__note">henter avganger&hellip;</p>';
+  if (state.phase === 'failed') return '<p class="inspector__note">kunne ikke hente avganger akkurat nå.</p>';
+  if (!state.departures.length) return '<p class="inspector__note">ingen flere avganger herfra i dag.</p>';
+
+  const rows = state.departures
+    .map((dep) => {
+      const p = punctuality(dep.delay);
+      const aimed = formatServiceTime(dep.aimed);
+      const expected = formatServiceTime(dep.expected);
+      const shifted = aimed !== expected;
+      const quay = dep.quay && dep.quay !== group.name ? `<p class="dep__quay">${escapeHtml(dep.quay)}</p>` : '';
+      return `<li class="dep ${dep.realtime ? '' : 'dep--sched'}">
+        <span class="badge" style="--c:${dep.color};--tc:${textOn(dep.color)}">${escapeHtml(dep.line || '·')}</span>
+        <span>
+          <p class="dep__head">${escapeHtml(dep.headsign || 'ukjent destinasjon')}</p>
+          ${quay}
+        </span>
+        <span class="dep__when">
+          <span class="dep__time">${shifted ? `<s>${aimed}</s>` : ''}${expected}</span>
+          <span class="dep__delay" style="--c:${p.hex}">${dep.realtime ? formatDelay(dep.delay) : 'rutetid'}</span>
+        </span>
+      </li>`;
+    })
+    .join('');
+
+  return `<p class="calls__title">Neste avganger</p><ul class="deps">${rows}</ul>`;
 }
 
 function escapeHtml(value: string): string {

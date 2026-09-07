@@ -1,5 +1,6 @@
 import { MODE_RAIL_ORDER } from './palette.js';
-import type { Mode } from './types.js';
+import type { Fix } from './geo.js';
+import type { Mode, RouteMeta } from './types.js';
 
 export interface ViewState {
   longitude: number;
@@ -7,6 +8,11 @@ export interface ViewState {
   zoom: number;
   pitch: number;
   bearing: number;
+}
+
+export interface LineFilter {
+  idx: number;
+  route: RouteMeta;
 }
 
 export interface AppState {
@@ -17,6 +23,9 @@ export interface AppState {
   showLabels: boolean;
   showBuildings: boolean;
   selected: number | null;
+  selectedStop: string | null;
+  line: LineFilter | null;
+  fix: Fix | null;
 }
 
 const DEFAULT_VIEW: ViewState = {
@@ -57,6 +66,11 @@ function readHash(): Partial<AppState> {
   };
 }
 
+export function readHashLineId(): string | null {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  return params.get('line');
+}
+
 export function createState(): AppState {
   const fromHash = readHash();
   return {
@@ -67,6 +81,9 @@ export function createState(): AppState {
     showLabels: fromHash.showLabels ?? true,
     showBuildings: fromHash.showBuildings ?? false,
     selected: null,
+    selectedStop: null,
+    line: null,
+    fix: null,
   };
 }
 
@@ -88,6 +105,7 @@ export function syncHash(state: AppState): void {
     if (!state.showNetwork) params.set('lines', '0');
     if (!state.showLabels) params.set('labels', '0');
     if (state.showBuildings) params.set('buildings', '1');
+    if (state.line) params.set('line', state.line.route.id);
     history.replaceState(null, '', `#${params.toString()}`);
   }, 220);
 }

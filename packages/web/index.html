@@ -39,9 +39,32 @@
         </div>
       </header>
 
-      <nav class="rail" id="mode-rail" aria-label="Transportmidler" data-reveal="2"></nav>
+      <section class="search" id="search" data-reveal="2">
+        <div class="search__field">
+          <label class="search__label" for="search-input">søk</label>
+          <input
+            class="search__input"
+            id="search-input"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="linje eller stopp"
+            aria-label="Søk etter linje eller stopp"
+            role="combobox"
+            aria-expanded="false"
+            aria-controls="search-results"
+            aria-autocomplete="list"
+          />
+          <kbd class="search__key" aria-hidden="true">/</kbd>
+        </div>
+        <div class="search__filter" id="search-filter" hidden></div>
+        <div class="search__results" id="search-results" role="listbox" aria-label="Treff" hidden></div>
+      </section>
 
-      <section class="legend" id="legend" data-reveal="4">
+      <nav class="rail" id="mode-rail" aria-label="Transportmidler" data-reveal="3"></nav>
+
+      <section class="legend" id="legend" data-reveal="5">
         <h2 class="legend__title">Presisjon</h2>
         <ul class="legend__scale" id="legend-scale"></ul>
         <h2 class="legend__title legend__title--spaced">Kilde</h2>
@@ -52,7 +75,7 @@
         <p class="legend__note" id="legend-note"></p>
       </section>
 
-      <aside class="status" id="status" data-reveal="3">
+      <aside class="status" id="status" data-reveal="4">
         <div class="status__clock" id="clock">--:--:--</div>
         <dl class="status__grid">
           <div><dt>i trafikk</dt><dd id="stat-active">–</dd></div>
@@ -63,7 +86,7 @@
         <div class="status__link" id="conn"><span class="dot"></span><span id="conn-label">frakoblet</span></div>
       </aside>
 
-      <section class="pulse" id="pulse" data-reveal="5">
+      <section class="pulse" id="pulse" data-reveal="6">
         <div class="pulse__track" id="pulse-track"></div>
         <div class="pulse__axis">
           <span id="pulse-caption">byens puls</span>

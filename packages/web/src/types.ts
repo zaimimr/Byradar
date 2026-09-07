@@ -69,6 +69,25 @@ export interface TripCall {
   name: string;
 }
 
+export interface Departure {
+  vid: number | null;
+  line: string;
+  mode: Mode;
+  color: string;
+  headsign: string;
+  quay: string;
+  aimed: number;
+  expected: number;
+  delay: number;
+  source: VehicleSource;
+  realtime: boolean;
+}
+
+export interface StopDepartures {
+  stop: StopPlace;
+  departures: Departure[];
+}
+
 export interface VehicleDetail {
   vehicle: {
     vid: number;
