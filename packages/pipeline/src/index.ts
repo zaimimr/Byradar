@@ -1,4 +1,4 @@
-import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rename, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -157,6 +157,12 @@ async function resolveServices(dir: string, date: string): Promise<Set<string>> 
   }
 
   return services;
+}
+
+async function writeArtifact(path: string, data: string | Buffer): Promise<void> {
+  const staged = `${path}.staging`;
+  await writeFile(staged, data);
+  await rename(staged, path);
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -487,14 +493,14 @@ async function main(): Promise<void> {
     text: r.textColor,
   }));
 
-  await writeFile(join(webDir, 'meta.json'), JSON.stringify(meta, null, 2));
-  await writeFile(join(webDir, 'routes.json'), JSON.stringify(webRoutes));
-  await writeFile(join(webDir, 'network.json'), JSON.stringify(network));
-  await writeFile(join(webDir, 'stops.json'), JSON.stringify(stopList));
+  await writeArtifact(join(webDir, 'meta.json'), JSON.stringify(meta, null, 2));
+  await writeArtifact(join(webDir, 'routes.json'), JSON.stringify(webRoutes));
+  await writeArtifact(join(webDir, 'network.json'), JSON.stringify(network));
+  await writeArtifact(join(webDir, 'stops.json'), JSON.stringify(stopList));
 
-  await writeFile(join(serverDir, 'meta.json'), JSON.stringify(meta, null, 2));
-  await writeFile(join(serverDir, 'routes.json'), JSON.stringify(webRoutes));
-  await writeFile(
+  await writeArtifact(join(serverDir, 'meta.json'), JSON.stringify(meta, null, 2));
+  await writeArtifact(join(serverDir, 'routes.json'), JSON.stringify(webRoutes));
+  await writeArtifact(
     join(serverDir, 'quays.json'),
     JSON.stringify({
       ids: corpus.quayIds,
@@ -503,12 +509,12 @@ async function main(): Promise<void> {
       parents: corpus.quayIds.map((q) => corpus.quayParent.get(q) ?? q),
     }),
   );
-  await writeFile(join(serverDir, 'stops.json'), JSON.stringify(stopList));
-  await writeFile(join(serverDir, 'journeys.json'), JSON.stringify(journeys));
-  await writeFile(join(serverDir, 'shapes-index.json'), JSON.stringify(shapeMeta));
-  await writeFile(join(serverDir, 'shapes.bin'), Buffer.from(shapeBuf.buffer, shapeBuf.byteOffset, shapeBuf.byteLength));
-  await writeFile(join(serverDir, 'trips-index.json'), JSON.stringify(tripMeta));
-  await writeFile(join(serverDir, 'trips.bin'), Buffer.from(tripBuf.buffer, tripBuf.byteOffset, tripBuf.byteLength));
+  await writeArtifact(join(serverDir, 'stops.json'), JSON.stringify(stopList));
+  await writeArtifact(join(serverDir, 'journeys.json'), JSON.stringify(journeys));
+  await writeArtifact(join(serverDir, 'shapes-index.json'), JSON.stringify(shapeMeta));
+  await writeArtifact(join(serverDir, 'shapes.bin'), Buffer.from(shapeBuf.buffer, shapeBuf.byteOffset, shapeBuf.byteLength));
+  await writeArtifact(join(serverDir, 'trips-index.json'), JSON.stringify(tripMeta));
+  await writeArtifact(join(serverDir, 'trips.bin'), Buffer.from(tripBuf.buffer, tripBuf.byteOffset, tripBuf.byteLength));
 
   log('artifacts written');
   console.table(meta.counts);

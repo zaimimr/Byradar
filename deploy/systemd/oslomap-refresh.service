@@ -1,0 +1,10 @@
+[Unit]
+Description=Rebuild the OsloMap timetable and restart the server
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/oslomap/deploy
+ExecStart=/opt/oslomap/deploy/refresh-data.sh
+TimeoutStartSec=3600

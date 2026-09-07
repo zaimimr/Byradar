@@ -1,0 +1,84 @@
+name: oslomap
+
+x-image: &image
+  image: oslomap:latest
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    args:
+      VITE_MAPTILER_KEY: ${VITE_MAPTILER_KEY:?set VITE_MAPTILER_KEY in deploy/.env}
+      VITE_MAPTILER_STYLE: ${VITE_MAPTILER_STYLE:-dataviz-v4-dark}
+
+services:
+  server:
+    <<: *image
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      TICK_MS: ${TICK_MS:-2000}
+      RT_POLL_MS: ${RT_POLL_MS:-30000}
+      VM_POLL_MS: ${VM_POLL_MS:-8000}
+      ET_CLIENT_NAME: ${ET_CLIENT_NAME:?set ET_CLIENT_NAME in deploy/.env}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_OPTIONS: --max-old-space-size=640
+    volumes:
+      - data:/app/data
+    expose:
+      - "8787"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8787/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 896M
+
+  pipeline:
+    <<: *image
+    profiles:
+      - tools
+    command: ["npm", "run", "-w", "@oslomap/pipeline", "start"]
+    environment:
+      NODE_OPTIONS: --max-old-space-size=2048
+    volumes:
+      - data:/app/data
+      - cache:/app/.cache
+    deploy:
+      resources:
+        limits:
+          memory: 2560M
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  data:
+  cache:
+  caddy_data:
+  caddy_config:
