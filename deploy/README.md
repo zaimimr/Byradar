@@ -25,7 +25,11 @@ Cloudflare -> Caddy :443 -> server :8787 -> data volume
    The timezone matters: the nightly timer runs on system local time and the
    pipeline picks its service date from the Oslo calendar day.
 
-2. Clone the repo to `/opt/oslomap` and configure:
+2. Build for **linux/amd64**. The compose file pins it, so building on the box
+   itself is a no-op and building on an Apple Silicon Mac emulates rather than
+   silently producing an unusable arm64 image.
+
+3. Clone the repo to `/opt/oslomap` and configure:
 
    ```sh
    git clone <repo-url> /opt/oslomap
@@ -34,7 +38,7 @@ Cloudflare -> Caddy :443 -> server :8787 -> data volume
    $EDITOR .env
    ```
 
-3. Point an A record at the box. Keep it **DNS only** (grey cloud) until Caddy has
+4. Point an A record at the box. Keep it **DNS only** (grey cloud) until Caddy has
    issued a certificate, then switch it to proxied if you want Cloudflare in front.
    See "Cloudflare" below.
 
@@ -120,37 +124,50 @@ nightly job did not run or the pipeline failed; check the journal.
 
 ## Resource budget
 
-Measured on the real feed:
+`docker-compose.yml` pins `linux/amd64` everywhere. Hetzner is x86_64; a build on
+an Apple Silicon Mac would otherwise produce an arm64 image that cannot run on
+the box. Emulated amd64 builds work on a Mac and are what the numbers below came
+from.
 
-| Container | Measured peak RSS | Limit | Notes |
-|---|---|---|---|
-| server | 310 MB idle, 400 MB at 1000 clients | 896 MB | |
-| caddy | ~30 MB | 256 MB | |
-| pipeline | 764 MB | 1536 MB | one-shot, ~10 s with cached zips |
+| Container | Limit | Measured |
+|---|---|---|
+| server | 896 MB | 380 MB running in the container on the real feed |
+| caddy | 256 MB | ~30 MB |
+| pipeline | 1536 MB | completes at a 768 MB limit, dies at 512 MB |
 
-The pipeline figure was measured with `/usr/bin/time -l` on darwin/arm64, not on
-the target. Linux and glibc will not land on the same number, so treat 764 MB,
-and the 2.6 GB of 4 GB it implies, as an indication rather than a guarantee.
-Re-measure on the box after the first nightly run:
+The pipeline number needs explaining, because the obvious measurements disagree
+and only one of them is the number you size against.
+
+- `/usr/bin/time -l` on darwin/arm64 reports **764 MB** peak RSS.
+- The cgroup reports **1308 MB** peak when given a 1536 MB limit, and **768 MB**
+  peak when given 768 MB. It expands to fill whatever it is given.
+
+Both are misleading on their own. `memory.stat` after a run shows `anon 5 MB`,
+`file 700 MB`: almost all of that peak is page cache from streaming the GTFS
+text files, and the kernel reclaims it under pressure rather than OOM-killing.
+So the cgroup peak tracks the limit, not the requirement.
+
+The requirement is what a hard limit actually survives. Measured by bisection on
+the real feed:
+
+| Limit | Result |
+|---|---|
+| 768 MB | completes, all 13 artifacts |
+| 512 MB | exit 134, V8 heap abort |
+| 384 MB | exit 137, OOM killed |
+
+So the true floor is between 512 and 768 MB, and the 1536 MB limit is roughly
+double it. Server, caddy and pipeline together cap at 2.6 GB on a 4 GB box.
+
+These came from emulated amd64 on darwin, so re-check after the first real
+nightly run:
 
 ```sh
 systemd-run --scope -p MemoryAccounting=yes ./refresh-data.sh
 ```
 
-The pipeline holds the whole merged corpus in memory (23064 trips before
-filtering, 380686 kept calls, 2418 shapes) but it streams the CSV files line by
-line and shells out to `unzip`, so the 825 MB of extracted GTFS never lands in
-the heap. It fits alongside the running server: 896 + 256 + 1536 = 2.6 GB of
-limits on a 4 GB box, leaving room for the OS and page cache.
-
-If the pipeline is ever OOM-killed the refresh script exits non-zero and the
-server keeps serving the timetable it already has, rather than dying with it.
-
-To watch it while it runs:
-
-```sh
-docker stats oslomap-pipeline-run-1
-```
+If the pipeline is ever OOM-killed the refresh script exits non-zero, the swap
+never happens, and the server keeps serving the timetable it already has.
 
 ## Cloudflare
 
