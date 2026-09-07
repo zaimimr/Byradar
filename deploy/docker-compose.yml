@@ -2,9 +2,12 @@ name: oslomap
 
 x-image: &image
   image: oslomap:latest
+  platform: linux/amd64
   build:
     context: ..
     dockerfile: deploy/Dockerfile
+    platforms:
+      - linux/amd64
     args:
       VITE_MAPTILER_KEY: ${VITE_MAPTILER_KEY:?set VITE_MAPTILER_KEY in deploy/.env}
       VITE_MAPTILER_STYLE: ${VITE_MAPTILER_STYLE:-dataviz-v4-dark}
@@ -58,6 +61,7 @@ services:
 
   caddy:
     image: caddy:2.8-alpine
+    platform: linux/amd64
     restart: unless-stopped
     depends_on:
       - server
