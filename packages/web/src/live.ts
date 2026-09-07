@@ -3,6 +3,8 @@ import type { Mode } from './types.js';
 
 const MAGIC = 0x4f534c31;
 const RECORD_BYTES = 16;
+const SNAP_METRES = 350;
+const METRES_PER_DEG_LAT = 111_320;
 const SOURCE_BY_CODE: VehicleSource[] = ['rt', 'sched', 'gps'];
 
 interface AddWire {
@@ -21,11 +23,22 @@ export interface LiveHandlers {
   onStatus: (state: 'connecting' | 'live' | 'lost') => void;
 }
 
+function shortestTurn(from: number, to: number): number {
+  return ((to - from + 540) % 360) - 180;
+}
+
+function roughMetres(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const dLat = (bLat - aLat) * METRES_PER_DEG_LAT;
+  const dLon = (bLon - aLon) * METRES_PER_DEG_LAT * Math.cos(((aLat + bLat) / 2) * (Math.PI / 180));
+  return Math.hypot(dLat, dLon);
+}
+
 export class LiveFeed {
   private socket: WebSocket | null = null;
   private readonly vehicles = new Map<number, Vehicle>();
   private retryMs = 800;
   private closed = false;
+  private tickMs = 1000;
 
   constructor(private readonly url: string, private readonly handlers: LiveHandlers) {}
 
@@ -75,6 +88,7 @@ export class LiveFeed {
       | { t: 'del'; v: number[] };
 
     if (msg.t === 'hello') {
+      this.tickMs = msg.tickMs;
       this.handlers.onHello(msg.meta, msg.tickMs);
       return;
     }
@@ -94,6 +108,14 @@ export class LiveFeed {
           bearing: existing?.bearing ?? 0,
           delay: existing?.delay ?? 0,
           seenAt: Date.now(),
+          fromLat: existing?.fromLat ?? 0,
+          fromLon: existing?.fromLon ?? 0,
+          fromBearing: existing?.fromBearing ?? 0,
+          toLat: existing?.toLat ?? 0,
+          toLon: existing?.toLon ?? 0,
+          toBearing: existing?.toBearing ?? 0,
+          startMs: existing?.startMs ?? 0,
+          endMs: existing?.endMs ?? 0,
         });
       }
       return;
@@ -101,24 +123,57 @@ export class LiveFeed {
     for (const vid of msg.v) this.vehicles.delete(vid);
   }
 
+  sample(nowMs: number): void {
+    for (const vehicle of this.vehicles.values()) {
+      if (vehicle.endMs === 0) continue;
+      const span = vehicle.endMs - vehicle.startMs;
+      const f = span <= 0 ? 1 : Math.min(1, Math.max(0, (nowMs - vehicle.startMs) / span));
+      vehicle.lat = vehicle.fromLat + (vehicle.toLat - vehicle.fromLat) * f;
+      vehicle.lon = vehicle.fromLon + (vehicle.toLon - vehicle.fromLon) * f;
+      vehicle.bearing =
+        (vehicle.fromBearing + shortestTurn(vehicle.fromBearing, vehicle.toBearing) * f + 360) % 360;
+    }
+  }
+
   private handleBinary(buf: ArrayBuffer): void {
     const view = new DataView(buf);
     if (view.byteLength < 12 || view.getUint32(0, false) !== MAGIC) return;
     const serverTime = view.getFloat64(4, true);
     const count = Math.floor((view.byteLength - 12) / RECORD_BYTES);
+    const now = Date.now();
 
     for (let i = 0; i < count; i++) {
       const o = 12 + i * RECORD_BYTES;
       const vid = view.getUint32(o, true);
       const vehicle = this.vehicles.get(vid);
       if (!vehicle) continue;
-      vehicle.lat = view.getFloat32(o + 4, true);
-      vehicle.lon = view.getFloat32(o + 8, true);
-      vehicle.bearing = view.getUint16(o + 12, true);
+      const lat = view.getFloat32(o + 4, true);
+      const lon = view.getFloat32(o + 8, true);
+      const bearing = view.getUint16(o + 12, true);
       vehicle.delay = view.getInt16(o + 14, true);
-      vehicle.seenAt = Date.now();
+      vehicle.seenAt = now;
+
+      const fresh = vehicle.endMs === 0;
+      const jumped = !fresh && roughMetres(vehicle.toLat, vehicle.toLon, lat, lon) > SNAP_METRES;
+
+      if (fresh || jumped) {
+        vehicle.fromLat = lat;
+        vehicle.fromLon = lon;
+        vehicle.fromBearing = bearing;
+      } else {
+        vehicle.fromLat = vehicle.lat;
+        vehicle.fromLon = vehicle.lon;
+        vehicle.fromBearing = vehicle.bearing;
+      }
+
+      vehicle.toLat = lat;
+      vehicle.toLon = lon;
+      vehicle.toBearing = bearing;
+      vehicle.startMs = now;
+      vehicle.endMs = now + this.tickMs;
     }
 
+    this.sample(now);
     this.handlers.onFrame(this.vehicles, serverTime);
   }
 }

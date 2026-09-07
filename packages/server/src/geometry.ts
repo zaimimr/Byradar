@@ -18,6 +18,8 @@ function bearingBetween(lat0: number, lon0: number, lat1: number, lon1: number):
   return (deg + 360) % 360;
 }
 
+const BEARING_LOOKAHEAD_M = 25;
+
 export function pointAtDistance(
   shapeData: Float64Array,
   shape: ShapeMeta,
@@ -45,10 +47,38 @@ export function pointAtDistance(
 
   const span = d1 - d0;
   const f = span <= 0 ? 0 : Math.min(1, Math.max(0, (distance - d0) / span));
+  const lat = la0 + f * (la1 - la0);
+  const lon = lo0 + f * (lo1 - lo0);
 
-  return {
-    lat: la0 + f * (la1 - la0),
-    lon: lo0 + f * (lo1 - lo0),
-    bearing: bearingBetween(la0, lo0, la1, lo1),
-  };
+  return { lat, lon, bearing: bearingAt(shapeData, shape, distance, lat, lon) };
+}
+
+function bearingAt(
+  shapeData: Float64Array,
+  shape: ShapeMeta,
+  distance: number,
+  lat: number,
+  lon: number,
+): number {
+  const base = shape.o * SHAPE_STRIDE;
+  const last = shape.n - 1;
+
+  for (let i = 0; i <= last; i++) {
+    const d = shapeData[base + i * SHAPE_STRIDE]!;
+    if (d < distance + BEARING_LOOKAHEAD_M) continue;
+    return bearingBetween(lat, lon, shapeData[base + i * SHAPE_STRIDE + 1]!, shapeData[base + i * SHAPE_STRIDE + 2]!);
+  }
+
+  for (let i = last; i >= 0; i--) {
+    const d = shapeData[base + i * SHAPE_STRIDE]!;
+    if (d > distance - BEARING_LOOKAHEAD_M) continue;
+    return bearingBetween(shapeData[base + i * SHAPE_STRIDE + 1]!, shapeData[base + i * SHAPE_STRIDE + 2]!, lat, lon);
+  }
+
+  return bearingBetween(
+    shapeData[base + 1]!,
+    shapeData[base + 2]!,
+    shapeData[base + last * SHAPE_STRIDE + 1]!,
+    shapeData[base + last * SHAPE_STRIDE + 2]!,
+  );
 }

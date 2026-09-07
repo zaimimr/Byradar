@@ -17,10 +17,9 @@ const sprites = buildVehicleSprites();
 let network: NetworkPath[] = [];
 let stops: StopPlace[] = [];
 let meta: DataMeta | null = null;
-let tickMs = 1000;
 let nowSec = 0;
 let vehicles: Vehicle[] = [];
-let needsRedraw = true;
+let frame = 0;
 
 const ui = new Ui({
   onToggleMode: (mode: Mode) => {
@@ -31,19 +30,16 @@ const ui = new Ui({
     }
     ui.syncState(state);
     syncHash(state);
-    needsRedraw = true;
   },
   onToggleNetwork: () => {
     state.showNetwork = !state.showNetwork;
     ui.syncState(state);
     syncHash(state);
-    needsRedraw = true;
   },
   onToggleStops: () => {
     state.showStops = !state.showStops;
     ui.syncState(state);
     syncHash(state);
-    needsRedraw = true;
   },
   onToggleLabels: () => {
     state.showLabels = !state.showLabels;
@@ -60,7 +56,6 @@ const ui = new Ui({
   onCloseInspector: () => {
     state.selected = null;
     ui.hideInspector();
-    needsRedraw = true;
   },
 });
 
@@ -76,7 +71,6 @@ map.on('load', () => {
   ui.setBuildingsSupported(supportsBuildings(map));
   if (!state.showLabels) setLabelVisibility(map, false);
   if (state.showBuildings) setBuildingVisibility(map, true);
-  needsRedraw = true;
 });
 
 map.on('move', () => {
@@ -89,7 +83,6 @@ map.on('move', () => {
     bearing: map.getBearing(),
   };
   syncHash(state);
-  needsRedraw = true;
 });
 
 async function loadStatic(): Promise<void> {
@@ -104,18 +97,14 @@ async function loadStatic(): Promise<void> {
   network = (await networkRes.json()) as NetworkPath[];
   stops = (await stopsRes.json()) as StopPlace[];
   ui.setMeta(meta);
-  needsRedraw = true;
 }
 
 const feed = new LiveFeed(__WS_URL__, {
-  onHello: (_serverMeta, serverTick) => {
-    tickMs = serverTick;
-  },
+  onHello: () => {},
   onFrame: (map_, serverTime) => {
     vehicles = [...map_.values()].filter((v) => v.lat !== 0 || v.lon !== 0);
     nowSec = secondsIntoOsloDay(serverTime);
     ui.setStats(vehicles);
-    needsRedraw = true;
     if (state.selected !== null && !map_.has(state.selected)) {
       state.selected = null;
       ui.hideInspector();
@@ -140,8 +129,7 @@ function secondsIntoOsloDay(atMs: number): number {
 }
 
 function redraw(): void {
-  if (!needsRedraw) return;
-  needsRedraw = false;
+  frame++;
   overlay.setProps({
     layers: buildLayers({
       state,
@@ -150,7 +138,7 @@ function redraw(): void {
       stops,
       vehicles,
       sprites,
-      tickMs,
+      frame,
     }),
     getTooltip: null,
     onHover: handleHover,
@@ -174,11 +162,9 @@ async function handleClick(info: PickingInfo): Promise<void> {
   if (!vehicle) {
     state.selected = null;
     ui.hideInspector();
-    needsRedraw = true;
     return;
   }
   state.selected = vehicle.vid;
-  needsRedraw = true;
   try {
     const res = await fetch(`${API}/vehicles/${vehicle.vid}`);
     if (!res.ok) return;
@@ -189,16 +175,16 @@ async function handleClick(info: PickingInfo): Promise<void> {
   }
 }
 
-function frame(): void {
+function loop(): void {
+  feed.sample(Date.now());
   redraw();
-  requestAnimationFrame(frame);
+  requestAnimationFrame(loop);
 }
 
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     state.selected = null;
     ui.hideInspector();
-    needsRedraw = true;
   }
 });
 
@@ -221,7 +207,7 @@ if (import.meta.env.DEV) {
 try {
   await loadStatic();
   feed.start();
-  requestAnimationFrame(frame);
+  requestAnimationFrame(loop);
 } catch (err) {
   ui.setBoot('kunne ikke laste data – kjører serveren?');
   console.error(err);

@@ -54,7 +54,7 @@ export interface LayerInput {
   stops: StopPlace[];
   vehicles: Vehicle[];
   sprites: SpriteSet;
-  tickMs: number;
+  frame: number;
 }
 
 const colorCache = new Map<string, [number, number, number]>();
@@ -82,7 +82,7 @@ function pathWeight(mode: Mode, zoom: number): number {
 }
 
 export function buildLayers(input: LayerInput): Layer[] {
-  const { state, zoom, network, stops, vehicles, sprites, tickMs } = input;
+  const { state, zoom, network, stops, vehicles, sprites, frame } = input;
   const layers: Layer[] = [];
 
   if (state.showNetwork) {
@@ -162,7 +162,6 @@ export function buildLayers(input: LayerInput): Layer[] {
   }
 
   const shown = vehicles.filter((v) => state.modes.has(v.mode));
-  const transitions = { getPosition: { duration: tickMs * 1.05, type: 'interpolation' as const } };
   const scale = zoomScale(zoom);
   const struggling = shown.filter((v) => v.delay >= HALO_DELAY_THRESHOLD);
 
@@ -177,8 +176,7 @@ export function buildLayers(input: LayerInput): Layer[] {
         getFillColor: (d) => [...rgb(punctuality(d.delay).hex), 40] as [number, number, number, number],
         stroked: false,
         filled: true,
-        updateTriggers: { getFillColor: struggling.length, getRadius: scale },
-        transitions,
+        updateTriggers: { getFillColor: frame, getRadius: [frame, scale] },
         parameters: { depthCompare: 'always' },
       }),
     );
@@ -196,8 +194,7 @@ export function buildLayers(input: LayerInput): Layer[] {
       getLineColor: (d) => [...rgb(punctuality(d.delay).hex), 215] as [number, number, number, number],
       lineWidthUnits: 'pixels',
       getLineWidth: 1.05,
-      updateTriggers: { getLineColor: shown.length, getRadius: scale },
-      transitions,
+      updateTriggers: { getLineColor: frame, getRadius: [frame, scale] },
       parameters: { depthCompare: 'always' },
     }),
   );
@@ -216,11 +213,12 @@ export function buildLayers(input: LayerInput): Layer[] {
       getAngle: (d) => -d.bearing,
       getColor: (d) => [...rgb(d.color), 255] as [number, number, number, number],
       updateTriggers: {
-        getColor: shown.length,
-        getIcon: shown.length,
-        getSize: [state.selected, shown.length, scale],
+        getColor: frame,
+        getIcon: frame,
+        getAngle: frame,
+        getPosition: frame,
+        getSize: [frame, state.selected, scale],
       },
-      transitions,
       parameters: { depthCompare: 'always' },
     }),
   );

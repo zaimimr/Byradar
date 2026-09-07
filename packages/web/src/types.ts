@@ -50,6 +50,14 @@ export interface Vehicle {
   bearing: number;
   delay: number;
   seenAt: number;
+  fromLat: number;
+  fromLon: number;
+  fromBearing: number;
+  toLat: number;
+  toLon: number;
+  toBearing: number;
+  startMs: number;
+  endMs: number;
 }
 
 export interface TripCall {
