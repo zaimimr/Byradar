@@ -8,3 +8,4 @@ data/server/
 *.log
 .DS_Store
 *.tsbuildinfo
+deploy/certs/

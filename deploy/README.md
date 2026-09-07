@@ -131,9 +131,25 @@ from.
 
 | Container | Limit | Measured |
 |---|---|---|
-| server | 896 MB | 380 MB running in the container on the real feed |
+| server | 896 MB | 335 MB running in the container on the real feed |
 | caddy | 256 MB | ~30 MB |
 | pipeline | 1536 MB | completes at a 768 MB limit, dies at 512 MB |
+
+Image size, since the available commands disagree and it is worth knowing which
+is which:
+
+```sh
+docker images --format '{{.Size}}' oslomap:latest   # 441 MB, sum of layer sizes
+docker run --rm --entrypoint sh oslomap:latest -c 'du -sx -m /'   # 320 MB on disk
+```
+
+Read `docker images` immediately after a build and it can report a much smaller
+number, because the layers are not materialised yet. Take the reading after the
+image has been run at least once.
+
+The runtime stage installs only the server and pipeline workspaces. The web
+bundle is prebuilt, so deck.gl and maplibre have no business in the image:
+including them cost 119 MB of `node_modules` for code that is never loaded.
 
 The pipeline number needs explaining, because the obvious measurements disagree
 and only one of them is the number you size against.
