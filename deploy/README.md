@@ -78,10 +78,27 @@ systemctl list-timers oslomap-refresh.timer
 ```
 
 The timer fires at 03:30 Oslo time with up to 15 minutes of jitter.
-`refresh-data.sh` runs the pipeline and restarts the server **only if the pipeline
-exits 0**. A failed pipeline leaves the running server untouched, still serving
-the timetable it loaded at boot, rather than a box with no data. `Persistent=true`
-means a run missed while the box was down happens at the next boot.
+`Persistent=true` means a run missed while the box was down happens at the next
+boot.
+
+`refresh-data.sh` never lets a failed run reach the live data:
+
+1. The pipeline writes to `data/.staging` (`DATA_DIR` override), not over the
+   live files. A crash partway leaves the live generation whole.
+2. The swap checks every expected artifact is present and non-empty, moves the
+   live generation aside to `data/.previous`, and moves staging into place. If
+   either move fails it rolls back on the way out.
+3. Only after a clean swap does the server restart.
+
+So a failure at any step leaves the box serving the timetable it already had,
+which is a day stale rather than absent. `data/.previous` keeps one generation
+for a manual rollback:
+
+```sh
+docker compose --profile tools run --rm --no-deps --entrypoint sh pipeline -c \
+  'rm -rf /app/data/server /app/data/web && mv /app/data/.previous/* /app/data/'
+docker compose restart server
+```
 
 ## Verify
 
@@ -169,3 +186,5 @@ docker compose build && docker compose up -d   # after a git pull
 ```
 
 `start:force` re-downloads the GTFS zips instead of reusing the cached ones.
+`DATA_DIR` sends pipeline output somewhere other than `/app/data`, which is how
+`refresh-data.sh` stages a run.
