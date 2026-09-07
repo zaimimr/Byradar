@@ -105,17 +105,20 @@ nightly job did not run or the pipeline failed; check the journal.
 
 Measured on the real feed:
 
-| Container | Steady RSS | Limit | Notes |
+| Container | Measured peak RSS | Limit | Notes |
 |---|---|---|---|
-| server | ~310 MB | 896 MB | grows slowly with active vehicles and clients |
+| server | 310 MB idle, 400 MB at 1000 clients | 896 MB | |
 | caddy | ~30 MB | 256 MB | |
-| pipeline | see below | 2560 MB | one-shot, nightly |
+| pipeline | 764 MB | 1536 MB | one-shot, ~10 s with cached zips |
 
-The pipeline is the only thing that comes close to filling the box. It holds the
-whole merged corpus in memory (14849 trips, 380686 calls, 600 shapes) while the
-server keeps running alongside it, so the nightly window is the peak. If the
-pipeline is ever OOM-killed, the refresh script exits non-zero and the server
-keeps serving the previous day rather than dying with it.
+The pipeline holds the whole merged corpus in memory (23064 trips before
+filtering, 380686 kept calls, 2418 shapes) but it streams the CSV files line by
+line and shells out to `unzip`, so the 825 MB of extracted GTFS never lands in
+the heap. It fits alongside the running server: 896 + 256 + 1536 = 2.6 GB of
+limits on a 4 GB box, leaving room for the OS and page cache.
+
+If the pipeline is ever OOM-killed the refresh script exits non-zero and the
+server keeps serving the timetable it already has, rather than dying with it.
 
 To watch it while it runs:
 

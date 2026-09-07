@@ -47,14 +47,14 @@ services:
       - tools
     command: ["npm", "run", "-w", "@oslomap/pipeline", "start"]
     environment:
-      NODE_OPTIONS: --max-old-space-size=2048
+      NODE_OPTIONS: --max-old-space-size=1280
     volumes:
       - data:/app/data
       - cache:/app/.cache
     deploy:
       resources:
         limits:
-          memory: 2560M
+          memory: 1536M
 
   caddy:
     image: caddy:2.8-alpine
