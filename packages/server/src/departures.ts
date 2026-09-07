@@ -99,7 +99,6 @@ export class DepartureIndex {
 }
 
 const LOOKBACK_SEC = 5_400;
-const LOOKAHEAD_SEC = 10_800;
 const OVERSCAN_FACTOR = 3;
 
 export interface DepartureRow {
@@ -133,10 +132,7 @@ export function buildDepartureBoard(
   const end = index.endOf(place);
   const wanted = limit * OVERSCAN_FACTOR;
 
-  for (let i = index.firstAtOrAfter(place, nowSec - LOOKBACK_SEC); i < end; i++) {
-    if (index.aimedAt(i) > nowSec + LOOKAHEAD_SEC) break;
-    if (rows.length >= wanted) break;
-
+  for (let i = index.firstAtOrAfter(place, nowSec - LOOKBACK_SEC); i < end && rows.length < wanted; i++) {
     const tripIdx = index.tripAt(i);
     const callIdx = index.callAt(i);
     const trip = store.trips[tripIdx]!;
