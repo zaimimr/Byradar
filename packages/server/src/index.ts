@@ -59,6 +59,7 @@ let lastStatsLog = 0;
 
 const ticker = setInterval(() => {
   const result = engine.tick();
+  if (!engine.hasRealtime) return;
   if (clients.size > 0) {
     if (result.added.length) {
       broadcast(JSON.stringify({ t: 'add', v: encodeAdded(result.added) }));

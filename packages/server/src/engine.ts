@@ -47,7 +47,7 @@ const WINDOW_TRAIL_SEC = 3600;
 const MAX_MODELLED_DELAY_SEC = 5400;
 
 const CATCH_UP_MPS = 14;
-const DRIFT_BACK_MPS = 7;
+const DRIFT_BACK_MPS = 3;
 const PLAUSIBLE_TOP_MPS = 60;
 const RESET_GAP_M = 1500;
 
@@ -81,8 +81,9 @@ export class Engine {
   private nextVid = 1;
   private vidByKey = new Map<string, number>();
   private current = new Map<number, VehicleState>();
-  private track = new Map<string, { dist: number; atMs: number }>();
+  private track = new Map<string, { dist: number; atMs: number; rtVersion: number }>();
   private corrections = 0;
+  private rtVersion = 0;
 
   constructor(
     private readonly store: Store,
@@ -95,8 +96,8 @@ export class Engine {
 
   private slew(tripId: string, target: number, nowMs: number): number {
     const prev = this.track.get(tripId);
-    if (!prev) {
-      this.track.set(tripId, { dist: target, atMs: nowMs });
+    if (!prev || prev.rtVersion !== this.rtVersion) {
+      this.track.set(tripId, { dist: target, atMs: nowMs, rtVersion: this.rtVersion });
       return target;
     }
 
@@ -114,12 +115,18 @@ export class Engine {
       if (Math.abs(gap) > maxForward) this.corrections++;
     }
 
-    this.track.set(tripId, { dist: next, atMs: nowMs });
+    this.track.set(tripId, { dist: next, atMs: nowMs, rtVersion: this.rtVersion });
     return next;
   }
 
   setTripUpdates(snap: RtSnapshot): void {
+    const hadNoRealtime = this.rt.byTrip.size === 0;
     this.rt = snap;
+    if (hadNoRealtime) this.rtVersion++;
+  }
+
+  get hasRealtime(): boolean {
+    return this.rt.byTrip.size > 0;
   }
 
   setGpsVehicles(vehicles: GpsVehicle[]): void {

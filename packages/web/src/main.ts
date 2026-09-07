@@ -134,8 +134,8 @@ function redraw(): void {
     layers: buildLayers({
       state,
       zoom: state.view.zoom,
-      pitch: state.view.pitch,
       latitude: state.view.latitude,
+      mapBearing: state.view.bearing,
       network,
       stops,
       vehicles,

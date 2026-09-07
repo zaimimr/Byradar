@@ -20,7 +20,7 @@ export function createMap(container: HTMLElement, view: ViewState): MapLibreMap 
     bearing: view.bearing,
     maxPitch: 72,
     minZoom: 8.5,
-    maxZoom: 18,
+    maxZoom: 21,
     attributionControl: false,
     antialias: true,
     dragRotate: true,

@@ -12,7 +12,6 @@
     "@deck.gl/core": "^9.0.36",
     "@deck.gl/layers": "^9.0.36",
     "@deck.gl/mapbox": "^9.0.36",
-    "@deck.gl/mesh-layers": "^9.4.0",
     "maplibre-gl": "^4.7.1"
   },
   "devDependencies": {

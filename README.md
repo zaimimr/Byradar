@@ -7,9 +7,8 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 ## What it shows
 
 - **206 lines** in the Oslo core, drawn from real route geometry with each operator's own line colours
-- **~750-850 vehicles** in motion at peak, each drawn as its own vehicle type - bus, tram, metro, train, ferry - turned to face its heading
-- **Punctuality rim** tracing each vehicle's silhouette: blue early, green within 3 min, amber 3-7 min late, red beyond. A second ring means a confirmed GPS fix
-- **Real 3D vehicles** when the map is tilted past 18 degrees: shaded extruded bodies sized per mode, with a punctuality marker on the ground
+- **~750-850 vehicles** in motion at peak, drawn two ways: zoomed out, an upright bubble carrying the mode pictogram, the line number and a small arrow for heading; past zoom 16.8, the vehicle's true-scale footprint aligned to the street
+- **Punctuality edge** on every vehicle: blue early, green within 3 min, amber 3-7 min late, red beyond
 - **Vehicle inspector**: click any vehicle for its line, destination, live deviation and the next stops with scheduled vs. expected times
 - **City pulse**: bar height is how many vehicles are running, bar colour is how punctual the network is right now
 - **3D buildings** on tilt, extruded from real OSM heights via MapTiler's vector tiles
@@ -28,6 +27,14 @@ So vehicles come from two different places, and the interface always says which:
 `EST` positions are on-route and delay-accurate: they use `shape_dist_traveled` from the timetable to place a vehicle at the exact metre along its own shape, then interpolate between the adjusted departure of the last stop and adjusted arrival at the next. What they cannot know is where a vehicle sits *between* stop-time reports, so a bus stuck in traffic mid-segment will drift ahead of its true position until the next stop update corrects it.
 
 Measured against the raw feed, the modelled deviations track reality: an independent recompute gave a median of 155 s and mean of 201 s for in-motion Ruter trips where the running engine reported 150 s and 193 s.
+
+### Heading and map rotation
+
+deck.gl draws `IconLayer` icons as screen-space billboards, so `getAngle` and `getPixelOffset` are in **screen** space and are not compensated for map rotation. Passing a world bearing straight through leaves every vehicle off by exactly the map's bearing, which is invisible when testing an unrotated map. Screen angle is therefore `mapBearing - vehicleBearing`, and the arrow's pixel offset is rotated by `-mapBearing`.
+
+Heading itself comes from a least-squares fit of the route geometry over a ~26 m window centred on the vehicle. A short two-point tangent picks up stop lay-bys and lane offsets and tilts the vehicle by 20-30 degrees on a straight street; a long lookahead crosses corners on Kvadraturen's 65 m blocks. The fit averages the noise without reaching past a corner.
+
+Verified by measuring rendered pixels rather than trusting the code: crop each marker, take the principal axis of its pixels, compare with the expected screen angle. Median error is 1.9 degrees unrotated and about 5 degrees at map bearings of 40 and -65.
 
 ### Keeping motion continuous
 

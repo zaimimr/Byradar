@@ -119,7 +119,7 @@ export class Ui {
   setMeta(meta: DataMeta): void {
     el<HTMLElement>('masthead-sub').textContent = `sanntid · ${meta.counts.routes} linjer · ${meta.serviceDate.slice(6, 8)}.${meta.serviceDate.slice(4, 6)}.${meta.serviceDate.slice(0, 4)}`;
     el<HTMLElement>('legend-note').textContent =
-      'Formen viser transportmiddel, ringen viser presisjon, og dobbel ring betyr bekreftet GPS. Vipp kartet for 3D.';
+      'Ikonet viser transportmiddel, kanten viser presisjon og pilen viser retning. Zoom inn for kjøretøy i virkelig størrelse.';
   }
 
   setConnection(state: 'connecting' | 'live' | 'lost'): void {

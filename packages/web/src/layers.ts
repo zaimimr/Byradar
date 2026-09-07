@@ -1,10 +1,8 @@
-import { IconLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers';
-import { SimpleMeshLayer } from '@deck.gl/mesh-layers';
+import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
 
-import { metresPerPixel, vehicleMesh } from './meshes.js';
-
 import { MODE_DRAW_ORDER, hexToRgb, punctuality } from './palette.js';
+import { FOOTPRINT_ZOOM, isLight, lighten, metresPerPixel, realLengthPx } from './sizes.js';
 import type { SpriteSet } from './sprites.js';
 import type { AppState } from './state.js';
 import type { Mode, NetworkPath, StopPlace, Vehicle } from './types.js';
@@ -29,45 +27,17 @@ const STOP_MIN_ZOOM: Record<Mode, number> = {
   other: 15,
 };
 
-const VEHICLE_SIZE: Record<Mode, number> = {
-  metro: 21,
-  rail: 23,
-  tram: 19,
-  ferry: 18,
-  bus: 15,
-  other: 14,
-};
-
-const RIM_GROWTH = 1.26;
-
-const HALO_DELAY_THRESHOLD = 420;
-
-function zoomScale(zoom: number): number {
-  return Math.min(1.9, Math.max(0.55, 0.55 + (zoom - 10.2) * 0.2));
-}
-
-function busFade(zoom: number): number {
-  if (zoom >= 13) return 1;
-  if (zoom <= 10.6) return 0.4;
-  return 0.4 + ((zoom - 10.6) / 2.4) * 0.6;
-}
-
-const PITCH_FOR_3D = 18;
-const MESH_TARGET_PX = 20;
-const MESH_MIN_ZOOM = 13;
-
-const VEHICLE_MATERIAL = {
-  ambient: 0.5,
-  diffuse: 0.65,
-  shininess: 28,
-  specularColor: [46, 52, 64] as [number, number, number],
-};
+const BUBBLE_RADIUS_PX = 11;
+const GLYPH_PX = 16;
+const ARROW_PX = 9.5;
+const LABEL_ZOOM = 14.2;
+const HALO_DELAY = 420;
 
 export interface LayerInput {
   state: AppState;
   zoom: number;
-  pitch: number;
   latitude: number;
+  mapBearing: number;
   network: NetworkPath[];
   stops: StopPlace[];
   vehicles: Vehicle[];
@@ -99,8 +69,26 @@ function pathWeight(mode: Mode, zoom: number): number {
   return base[mode] + zoomBoost * (mode === 'bus' ? 0.5 : 1);
 }
 
+function busFade(zoom: number): number {
+  if (zoom >= 13) return 1;
+  if (zoom <= 10.6) return 0.4;
+  return 0.4 + ((zoom - 10.6) / 2.4) * 0.6;
+}
+
+function stopColor(mode: Mode): string {
+  const map: Record<Mode, string> = {
+    metro: '#EC700C',
+    tram: '#0B91EF',
+    rail: '#1B7A5A',
+    bus: '#98A3B4',
+    ferry: '#5C7CB8',
+    other: '#7C869A',
+  };
+  return map[mode] ?? '#8892A6';
+}
+
 export function buildLayers(input: LayerInput): Layer[] {
-  const { state, zoom, pitch, latitude, network, stops, vehicles, sprites, frame } = input;
+  const { state, zoom, latitude, mapBearing, network, stops, vehicles, sprites, frame } = input;
   const layers: Layer[] = [];
 
   if (state.showNetwork) {
@@ -169,7 +157,7 @@ export function buildLayers(input: LayerInput): Layer[] {
           stroked: true,
           filled: true,
           getFillColor: [10, 13, 18, 235],
-          getLineColor: (d) => [...rgb(mixStopColor(d.modes[0] ?? 'other')), 210] as [number, number, number, number],
+          getLineColor: (d) => [...rgb(stopColor(d.modes[0] ?? 'other')), 210] as [number, number, number, number],
           lineWidthUnits: 'pixels',
           getLineWidth: 1.1,
           lineWidthMinPixels: 0.9,
@@ -180,8 +168,12 @@ export function buildLayers(input: LayerInput): Layer[] {
   }
 
   const shown = vehicles.filter((v) => state.modes.has(v.mode));
-  const scale = zoomScale(zoom);
-  const struggling = shown.filter((v) => v.delay >= HALO_DELAY_THRESHOLD);
+  if (!shown.length) return layers;
+
+  const mpp = metresPerPixel(latitude, zoom);
+  const asFootprint = zoom >= FOOTPRINT_ZOOM;
+  const screenAngle = (d: Vehicle): number => mapBearing - d.bearing;
+  const struggling = shown.filter((v) => v.delay >= HALO_DELAY);
 
   if (struggling.length) {
     layers.push(
@@ -189,151 +181,138 @@ export function buildLayers(input: LayerInput): Layer[] {
         id: 'vehicle-halo',
         data: struggling,
         getPosition: (d) => [d.lon, d.lat],
-        getRadius: (d) => VEHICLE_SIZE[d.mode] * scale * 0.72,
+        getRadius: asFootprint ? (d) => realLengthPx(d.mode, mpp) * 0.6 : BUBBLE_RADIUS_PX * 1.7,
         radiusUnits: 'pixels',
-        getFillColor: (d) => [...rgb(punctuality(d.delay).hex), 42] as [number, number, number, number],
+        getFillColor: (d) => [...rgb(punctuality(d.delay).hex), 34] as [number, number, number, number],
         stroked: false,
         filled: true,
-        updateTriggers: { getFillColor: frame, getRadius: [frame, scale] },
+        updateTriggers: { getFillColor: frame, getRadius: [frame, mpp] },
         parameters: { depthCompare: 'always' },
       }),
     );
   }
 
-  const fixed = shown.filter((v) => v.source === 'gps');
-  if (fixed.length) {
-    layers.push(
-      new ScatterplotLayer<Vehicle>({
-        id: 'vehicle-fix-ring',
-        data: fixed,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: (d) => VEHICLE_SIZE[d.mode] * scale * 0.78,
-        radiusUnits: 'pixels',
-        stroked: true,
-        filled: false,
-        getLineColor: (d) => [...rgb(punctuality(d.delay).hex), 150] as [number, number, number, number],
-        lineWidthUnits: 'pixels',
-        getLineWidth: 1,
-        updateTriggers: { getLineColor: frame, getRadius: [frame, scale] },
-        parameters: { depthCompare: 'always' },
-      }),
-    );
-  }
-
-  const use3d = pitch >= PITCH_FOR_3D && zoom >= MESH_MIN_ZOOM;
-
-  if (use3d) {
-    const sizeScale = metresPerPixel(latitude, zoom) * MESH_TARGET_PX;
-    layers.push(
-      new ScatterplotLayer<Vehicle>({
-        id: 'vehicle-ground',
-        data: shown,
-        getPosition: (d) => [d.lon, d.lat],
-        getRadius: (d) => VEHICLE_SIZE[d.mode] * scale * 0.62,
-        radiusUnits: 'pixels',
-        stroked: true,
-        filled: true,
-        getFillColor: (d) => [...rgb(punctuality(d.delay).hex), 34] as [number, number, number, number],
-        getLineColor: (d) => [...rgb(punctuality(d.delay).hex), 190] as [number, number, number, number],
-        lineWidthUnits: 'pixels',
-        getLineWidth: 1.2,
-        updateTriggers: {
-          getFillColor: frame,
-          getLineColor: frame,
-          getPosition: frame,
-          getRadius: [frame, scale],
-        },
-      }),
-    );
-    for (const mode of MODE_DRAW_ORDER) {
-      const forMode = shown.filter((v) => v.mode === mode);
-      if (!forMode.length) continue;
-      layers.push(
-        new SimpleMeshLayer<Vehicle>({
-          id: `vehicle-mesh-${mode}`,
-          data: forMode,
-          pickable: true,
-          mesh: vehicleMesh(mode),
-          getPosition: (d) => [d.lon, d.lat],
-          getOrientation: (d) => [0, -d.bearing, 0],
-          getColor: (d) =>
-            [...rgb(d.color), d.source === 'gps' ? 255 : 226] as [number, number, number, number],
-          getScale: (d) => {
-            const s = state.selected === d.vid ? 1.4 : 1;
-            return [s, s, s];
-          },
-          sizeScale,
-          material: VEHICLE_MATERIAL,
-          updateTriggers: {
-            getPosition: frame,
-            getOrientation: frame,
-            getColor: frame,
-            getScale: [frame, state.selected],
-          },
-        }),
-      );
-    }
-  } else {
+  if (asFootprint) {
     layers.push(
       new IconLayer<Vehicle>({
-        id: 'vehicle-rim',
+        id: 'vehicle-hull-rim',
         data: shown,
         iconAtlas: sprites.atlas,
         iconMapping: sprites.mapping,
-        getIcon: (d) => `${d.mode}-rim`,
+        getIcon: (d) => `hull-${d.mode}-rim`,
         getPosition: (d) => [d.lon, d.lat],
-        getSize: (d) =>
-          VEHICLE_SIZE[d.mode] * scale * RIM_GROWTH * (state.selected === d.vid ? 1.5 : 1),
+        getSize: (d) => realLengthPx(d.mode, mpp),
         sizeUnits: 'pixels',
-        getAngle: (d) => -d.bearing,
-        getColor: (d) => [...rgb(punctuality(d.delay).hex), 236] as [number, number, number, number],
-        updateTriggers: {
-          getColor: frame,
-          getIcon: frame,
-          getAngle: frame,
-          getPosition: frame,
-          getSize: [frame, state.selected, scale],
-        },
+        getAngle: screenAngle,
+        getColor: (d) => [...rgb(punctuality(d.delay).hex), 225] as [number, number, number, number],
+        updateTriggers: { getColor: frame, getIcon: frame, getAngle: [frame, mapBearing], getPosition: frame, getSize: mpp },
         parameters: { depthCompare: 'always' },
       }),
     );
+
     layers.push(
       new IconLayer<Vehicle>({
-        id: 'vehicle-body',
+        id: 'vehicle-hull',
         data: shown,
         pickable: true,
         iconAtlas: sprites.atlas,
         iconMapping: sprites.mapping,
-        getIcon: (d) => d.mode,
+        getIcon: (d) => `hull-${d.mode}`,
         getPosition: (d) => [d.lon, d.lat],
-        getSize: (d) => VEHICLE_SIZE[d.mode] * scale * (state.selected === d.vid ? 1.5 : 1),
+        getSize: (d) => realLengthPx(d.mode, mpp),
         sizeUnits: 'pixels',
-        getAngle: (d) => -d.bearing,
+        getAngle: screenAngle,
         getColor: (d) =>
-          [...rgb(d.color), d.source === 'gps' ? 255 : 224] as [number, number, number, number],
-        updateTriggers: {
-          getColor: frame,
-          getIcon: frame,
-          getAngle: frame,
-          getPosition: frame,
-          getSize: [frame, state.selected, scale],
+          [...lighten(rgb(d.color), 0.62), d.source === 'gps' ? 255 : 232] as [number, number, number, number],
+        updateTriggers: { getColor: frame, getIcon: frame, getAngle: [frame, mapBearing], getPosition: frame, getSize: mpp },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+  } else {
+    layers.push(
+      new ScatterplotLayer<Vehicle>({
+        id: 'vehicle-bubble',
+        data: shown,
+        pickable: true,
+        getPosition: (d) => [d.lon, d.lat],
+        getRadius: BUBBLE_RADIUS_PX,
+        radiusUnits: 'pixels',
+        stroked: true,
+        filled: true,
+        getFillColor: (d) => [...rgb(d.color), d.source === 'gps' ? 255 : 236] as [number, number, number, number],
+        getLineColor: (d) => [...rgb(punctuality(d.delay).hex), 255] as [number, number, number, number],
+        lineWidthUnits: 'pixels',
+        getLineWidth: 2,
+        updateTriggers: { getFillColor: frame, getLineColor: frame, getPosition: frame },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+
+    layers.push(
+      new IconLayer<Vehicle>({
+        id: 'vehicle-arrow',
+        data: shown,
+        iconAtlas: sprites.atlas,
+        iconMapping: sprites.mapping,
+        getIcon: () => 'arrow',
+        getPosition: (d) => [d.lon, d.lat],
+        getSize: ARROW_PX,
+        sizeUnits: 'pixels',
+        getAngle: screenAngle,
+        getPixelOffset: (d) => {
+          const rad = ((d.bearing - mapBearing) * Math.PI) / 180;
+          const r = BUBBLE_RADIUS_PX + 5.5;
+          return [Math.sin(rad) * r, -Math.cos(rad) * r];
         },
+        getColor: (d) => [...rgb(punctuality(d.delay).hex), 255] as [number, number, number, number],
+        updateTriggers: { getAngle: [frame, mapBearing], getPixelOffset: [frame, mapBearing], getColor: frame, getPosition: frame },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+
+    layers.push(
+      new IconLayer<Vehicle>({
+        id: 'vehicle-glyph',
+        data: shown,
+        iconAtlas: sprites.atlas,
+        iconMapping: sprites.mapping,
+        getIcon: (d) => `glyph-${d.mode}`,
+        getPosition: (d) => [d.lon, d.lat],
+        getSize: GLYPH_PX,
+        sizeUnits: 'pixels',
+        getColor: (d) =>
+          (isLight(rgb(d.color)) ? [12, 15, 21, 255] : [255, 255, 255, 246]) as [number, number, number, number],
+        updateTriggers: { getIcon: frame, getColor: frame, getPosition: frame },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+  }
+
+  if (zoom >= LABEL_ZOOM) {
+    const offset = asFootprint ? -16 : -(BUBBLE_RADIUS_PX + 12);
+    layers.push(
+      new TextLayer<Vehicle>({
+        id: 'vehicle-label',
+        data: shown,
+        getPosition: (d) => [d.lon, d.lat],
+        getText: (d) => d.line,
+        getSize: 11,
+        sizeUnits: 'pixels',
+        getPixelOffset: [0, offset],
+        getColor: [236, 241, 249, 245],
+        outlineColor: [8, 10, 14, 235],
+        outlineWidth: 3,
+        fontFamily: "'Martian Mono', ui-monospace, monospace",
+        fontWeight: 500,
+        fontSettings: { sdf: true, fontSize: 48, buffer: 6 },
+        characterSet: 'auto',
+        getTextAnchor: 'middle',
+        getAlignmentBaseline: 'center',
+        updateTriggers: { getText: frame, getPosition: frame, getPixelOffset: asFootprint },
         parameters: { depthCompare: 'always' },
       }),
     );
   }
 
   return layers;
-}
-
-function mixStopColor(mode: Mode): string {
-  const map: Record<Mode, string> = {
-    metro: '#EC700C',
-    tram: '#0B91EF',
-    rail: '#1B7A5A',
-    bus: '#98A3B4',
-    ferry: '#5C7CB8',
-    other: '#7C869A',
-  };
-  return map[mode] ?? '#8892A6';
 }

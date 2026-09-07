@@ -1,6 +1,9 @@
 import { SHAPE_STRIDE, type ShapeMeta } from './store.js';
 
 const DEG = Math.PI / 180;
+const TANGENT_BEHIND_M = 11;
+const TANGENT_AHEAD_M = 15;
+const METRES_PER_DEG = 111_320;
 
 export interface PointOnShape {
   lat: number;
@@ -18,13 +21,11 @@ function bearingBetween(lat0: number, lon0: number, lat1: number, lon1: number):
   return (deg + 360) % 360;
 }
 
-const BEARING_LOOKAHEAD_M = 25;
-
-export function pointAtDistance(
+function sampleAt(
   shapeData: Float64Array,
   shape: ShapeMeta,
   distance: number,
-): PointOnShape {
+): { lat: number; lon: number } {
   const base = shape.o * SHAPE_STRIDE;
   const last = shape.n - 1;
 
@@ -36,8 +37,8 @@ export function pointAtDistance(
     else hi = mid;
   }
 
-  const i1 = lo === 0 ? 1 : lo;
-  const i0 = i1 - 1;
+  const i1 = lo === 0 ? Math.min(1, last) : lo;
+  const i0 = Math.max(0, i1 - 1);
   const d0 = shapeData[base + i0 * SHAPE_STRIDE]!;
   const d1 = shapeData[base + i1 * SHAPE_STRIDE]!;
   const la0 = shapeData[base + i0 * SHAPE_STRIDE + 1]!;
@@ -47,38 +48,97 @@ export function pointAtDistance(
 
   const span = d1 - d0;
   const f = span <= 0 ? 0 : Math.min(1, Math.max(0, (distance - d0) / span));
-  const lat = la0 + f * (la1 - la0);
-  const lon = lo0 + f * (lo1 - lo0);
-
-  return { lat, lon, bearing: bearingAt(shapeData, shape, distance, lat, lon) };
+  return { lat: la0 + f * (la1 - la0), lon: lo0 + f * (lo1 - lo0) };
 }
 
-function bearingAt(
+export function pointAtDistance(
   shapeData: Float64Array,
   shape: ShapeMeta,
   distance: number,
-  lat: number,
-  lon: number,
-): number {
+): PointOnShape {
   const base = shape.o * SHAPE_STRIDE;
   const last = shape.n - 1;
+  const end = shapeData[base + last * SHAPE_STRIDE]!;
+  const clamped = Math.min(end, Math.max(0, distance));
 
-  for (let i = 0; i <= last; i++) {
-    const d = shapeData[base + i * SHAPE_STRIDE]!;
-    if (d < distance + BEARING_LOOKAHEAD_M) continue;
-    return bearingBetween(lat, lon, shapeData[base + i * SHAPE_STRIDE + 1]!, shapeData[base + i * SHAPE_STRIDE + 2]!);
+  const here = sampleAt(shapeData, shape, clamped);
+  const from = Math.max(0, clamped - TANGENT_BEHIND_M);
+  const to = Math.min(end, clamped + TANGENT_AHEAD_M);
+  const behind = sampleAt(shapeData, shape, from);
+  const ahead = sampleAt(shapeData, shape, to);
+
+  if (behind.lat === ahead.lat && behind.lon === ahead.lon) {
+    const first = sampleAt(shapeData, shape, 0);
+    const final = sampleAt(shapeData, shape, end);
+    return { lat: here.lat, lon: here.lon, bearing: bearingBetween(first.lat, first.lon, final.lat, final.lon) };
   }
 
-  for (let i = last; i >= 0; i--) {
+  const fitted = fitTangent(shapeData, shape, from, to, behind, ahead, here.lat);
+  return { lat: here.lat, lon: here.lon, bearing: fitted };
+}
+
+function fitTangent(
+  shapeData: Float64Array,
+  shape: ShapeMeta,
+  from: number,
+  to: number,
+  behind: { lat: number; lon: number },
+  ahead: { lat: number; lon: number },
+  refLat: number,
+): number {
+  const base = shape.o * SHAPE_STRIDE;
+  const lonScale = Math.cos(refLat * DEG) * METRES_PER_DEG;
+
+  let n = 0;
+  let sumX = 0;
+  let sumY = 0;
+  const xs: number[] = [];
+  const ys: number[] = [];
+
+  const add = (lat: number, lon: number): void => {
+    const x = lon * lonScale;
+    const y = lat * METRES_PER_DEG;
+    xs.push(x);
+    ys.push(y);
+    sumX += x;
+    sumY += y;
+    n++;
+  };
+
+  add(behind.lat, behind.lon);
+  for (let i = 0; i < shape.n; i++) {
     const d = shapeData[base + i * SHAPE_STRIDE]!;
-    if (d > distance - BEARING_LOOKAHEAD_M) continue;
-    return bearingBetween(shapeData[base + i * SHAPE_STRIDE + 1]!, shapeData[base + i * SHAPE_STRIDE + 2]!, lat, lon);
+    if (d <= from) continue;
+    if (d >= to) break;
+    add(shapeData[base + i * SHAPE_STRIDE + 1]!, shapeData[base + i * SHAPE_STRIDE + 2]!);
+  }
+  add(ahead.lat, ahead.lon);
+
+  if (n < 3) return bearingBetween(behind.lat, behind.lon, ahead.lat, ahead.lon);
+
+  const meanX = sumX / n;
+  const meanY = sumY / n;
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i]! - meanX;
+    const dy = ys[i]! - meanY;
+    sxx += dx * dx;
+    syy += dy * dy;
+    sxy += dx * dy;
   }
 
-  return bearingBetween(
-    shapeData[base + 1]!,
-    shapeData[base + 2]!,
-    shapeData[base + last * SHAPE_STRIDE + 1]!,
-    shapeData[base + last * SHAPE_STRIDE + 2]!,
-  );
+  const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  let vx = Math.cos(theta);
+  let vy = Math.sin(theta);
+
+  const travelX = ahead.lon * lonScale - behind.lon * lonScale;
+  const travelY = (ahead.lat - behind.lat) * METRES_PER_DEG;
+  if (vx * travelX + vy * travelY < 0) {
+    vx = -vx;
+    vy = -vy;
+  }
+
+  return (Math.atan2(vx, vy) / DEG + 360) % 360;
 }
