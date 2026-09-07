@@ -114,7 +114,6 @@ function broadcast(payload: string): void {
 }
 
 function broadcastPositions(all: VehicleState[], nowMs: number): void {
-  positionsPayload = Buffer.from(encodePositions(all, nowMs));
   for (const [socket, view] of clients) {
     if (socket.readyState !== socket.OPEN) continue;
     if (!view) {
@@ -131,6 +130,8 @@ const ticker = setInterval(() => {
   const result = engine.tick();
   if (result.added.length || result.removed.length) addAllPayload = null;
   if (!engine.hasRealtime) return;
+  const nowMs = Date.now();
+  positionsPayload = Buffer.from(encodePositions(result.all, nowMs));
   if (clients.size > 0) {
     if (result.added.length) {
       broadcast(JSON.stringify({ t: 'add', v: encodeAdded(result.added) }));
@@ -138,7 +139,7 @@ const ticker = setInterval(() => {
     if (result.removed.length) {
       broadcast(JSON.stringify({ t: 'del', v: result.removed }));
     }
-    broadcastPositions(result.all, Date.now());
+    broadcastPositions(result.all, nowMs);
   }
   if (Date.now() - lastStatsLog > 30_000) {
     lastStatsLog = Date.now();
