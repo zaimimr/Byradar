@@ -69,6 +69,32 @@ export interface TripCall {
   name: string;
 }
 
+export interface Departure {
+  vid: number | null;
+  line: string;
+  mode: Mode;
+  color: string;
+  headsign: string;
+  quay: string;
+  aimed: number;
+  expected: number;
+  delay: number;
+  source: VehicleSource;
+  realtime: boolean;
+}
+
+export type TimetableCoverage = 'full' | 'partial' | 'none';
+
+export interface DepartureStop extends StopPlace {
+  timetable?: TimetableCoverage;
+  missingModes?: Mode[];
+}
+
+export interface StopDepartures {
+  stop: DepartureStop;
+  departures: Departure[];
+}
+
 export interface VehicleDetail {
   vehicle: {
     vid: number;

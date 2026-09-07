@@ -7,6 +7,10 @@ const METRES_PER_DEG_LAT = 111_320;
 const PLAUSIBLE_TOP_MPS = 80;
 const MIN_WINDOW_MS = 250;
 const MAX_WINDOW_MS = 12_000;
+const RETRY_BASE_MS = 800;
+const RETRY_CEILING_MS = 12_000;
+const RETRY_GROWTH = 1.7;
+const RETRY_JITTER_FLOOR = 0.3;
 const SOURCE_BY_CODE: VehicleSource[] = ['rt', 'sched', 'gps'];
 
 interface AddWire {
@@ -38,7 +42,7 @@ function roughMetres(aLat: number, aLon: number, bLat: number, bLon: number): nu
 export class LiveFeed {
   private socket: WebSocket | null = null;
   private readonly vehicles = new Map<number, Vehicle>();
-  private retryMs = 800;
+  private retryMs = RETRY_BASE_MS;
   private closed = false;
   private tickMs = 1000;
   private viewport: [number, number, number, number] | null = null;
@@ -76,7 +80,7 @@ export class LiveFeed {
     this.socket = socket;
 
     socket.onopen = () => {
-      this.retryMs = 800;
+      this.retryMs = RETRY_BASE_MS;
       this.handlers.onStatus('live');
       this.sendViewport();
     };
@@ -89,11 +93,16 @@ export class LiveFeed {
     socket.onclose = () => {
       if (this.closed) return;
       this.handlers.onStatus('lost');
-      setTimeout(() => this.connect(), this.retryMs);
-      this.retryMs = Math.min(this.retryMs * 1.7, 12_000);
+      setTimeout(() => this.connect(), this.nextRetryDelay());
+      this.retryMs = Math.min(this.retryMs * RETRY_GROWTH, RETRY_CEILING_MS);
     };
 
     socket.onerror = () => socket.close();
+  }
+
+  private nextRetryDelay(): number {
+    const spread = 1 - RETRY_JITTER_FLOOR;
+    return Math.round(this.retryMs * (RETRY_JITTER_FLOOR + Math.random() * spread));
   }
 
   private handleJson(raw: string): void {

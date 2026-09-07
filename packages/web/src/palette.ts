@@ -9,6 +9,15 @@ export const MODE_LABEL: Record<Mode, string> = {
   other: 'Annet',
 };
 
+export const MODE_SHORT: Record<Mode, string> = {
+  metro: 'T',
+  tram: 'trikk',
+  rail: 'tog',
+  bus: 'buss',
+  ferry: 'båt',
+  other: 'annet',
+};
+
 export const MODE_SWATCH: Record<Mode, string> = {
   metro: '#EC700C',
   tram: '#0B91EF',
