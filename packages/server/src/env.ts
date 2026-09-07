@@ -17,7 +17,7 @@ function int(name: string, fallback: number): number {
 export const ENV = {
   port: int('PORT', 8787),
   host: process.env.HOST ?? '0.0.0.0',
-  rtPollMs: int('RT_POLL_MS', 30_000),
+  rtPollMs: int('RT_POLL_MS', 60_000),
   vmPollMs: int('VM_POLL_MS', 8_000),
   tickMs: int('TICK_MS', 1_000),
   clientName: process.env.ET_CLIENT_NAME ?? 'oslomap-dev',

@@ -2,6 +2,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { PickingInfo } from '@deck.gl/core';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
+import { DATA_URL, API_URL, WS_URL } from './endpoints.js';
 import { LiveFeed } from './live.js';
 import { buildLayers } from './layers.js';
 import { calmBasemap, createMap, setBuildingVisibility, setLabelVisibility, supportsBuildings } from './mapbase.js';
@@ -10,7 +11,10 @@ import { createState, syncHash } from './state.js';
 import { Ui } from './ui.js';
 import type { DataMeta, Mode, NetworkPath, StopPlace, Vehicle, VehicleDetail } from './types.js';
 
-const API = __API_URL__;
+const STALE_AFTER_MS = 8000;
+
+const DATA = DATA_URL;
+const API = API_URL;
 const state = createState();
 const sprites = buildVehicleSprites();
 
@@ -83,14 +87,32 @@ map.on('move', () => {
     bearing: map.getBearing(),
   };
   syncHash(state);
+  scheduleViewportReport();
 });
+
+let viewportTimer: number | undefined;
+
+function scheduleViewportReport(): void {
+  if (viewportTimer !== undefined) clearTimeout(viewportTimer);
+  viewportTimer = window.setTimeout(() => {
+    const b = map.getBounds();
+    const padLon = (b.getEast() - b.getWest()) * 0.25;
+    const padLat = (b.getNorth() - b.getSouth()) * 0.25;
+    feed.reportViewport([
+      b.getWest() - padLon,
+      b.getSouth() - padLat,
+      b.getEast() + padLon,
+      b.getNorth() + padLat,
+    ]);
+  }, 260);
+}
 
 async function loadStatic(): Promise<void> {
   ui.setBoot('laster nettverket');
   const [metaRes, networkRes, stopsRes] = await Promise.all([
-    fetch(`${API}/data/meta.json`),
-    fetch(`${API}/data/network.json`),
-    fetch(`${API}/data/stops.json`),
+    fetch(`${DATA}/meta.json`),
+    fetch(`${DATA}/network.json`),
+    fetch(`${DATA}/stops.json`),
   ]);
   if (!metaRes.ok || !networkRes.ok || !stopsRes.ok) throw new Error('kunne ikke laste kartdata');
   meta = (await metaRes.json()) as DataMeta;
@@ -99,10 +121,11 @@ async function loadStatic(): Promise<void> {
   ui.setMeta(meta);
 }
 
-const feed = new LiveFeed(__WS_URL__, {
+const feed = new LiveFeed(WS_URL, {
   onHello: () => {},
   onFrame: (map_, serverTime) => {
-    vehicles = [...map_.values()].filter((v) => v.lat !== 0 || v.lon !== 0);
+    const cutoff = Date.now() - STALE_AFTER_MS;
+    vehicles = [...map_.values()].filter((v) => v.lastChangeMs > 0 && v.seenAt >= cutoff);
     nowSec = secondsIntoOsloDay(serverTime);
     ui.setStats(vehicles);
     if (state.selected !== null && !map_.has(state.selected)) {
@@ -112,7 +135,10 @@ const feed = new LiveFeed(__WS_URL__, {
   },
   onStatus: (status) => {
     ui.setConnection(status);
-    if (status === 'live') ui.setBoot(null);
+    if (status === 'live') {
+      ui.setBoot(null);
+      scheduleViewportReport();
+    }
   },
 });
 

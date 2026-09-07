@@ -2,12 +2,14 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { WebSocket } from 'ws';
 
 import { DestinationResolver } from './destinations.js';
-import { Engine } from './engine.js';
+import { Engine, type VehicleState } from './engine.js';
 import { startGpsPoller } from './entur.js';
-import { ENV } from './env.js';
+import { ENV, REPO_ROOT } from './env.js';
 import { startTripUpdatePoller } from './rt.js';
 import { Store } from './store.js';
 import { encodeAdded, encodePositions } from './wire.js';
@@ -21,7 +23,25 @@ await app.register(cors, { origin: true });
 await app.register(websocket, { options: { maxPayload: 1 << 22 } });
 await app.register(fastifyStatic, { root: ENV.webDataDir, prefix: '/data/' });
 
-const clients = new Set<WebSocket>();
+const WEB_DIST = resolve(REPO_ROOT, 'packages', 'web', 'dist');
+const serveWeb = existsSync(resolve(WEB_DIST, 'index.html'));
+if (serveWeb) {
+  await app.register(fastifyStatic, { root: WEB_DIST, prefix: '/', decorateReply: false });
+}
+
+interface Viewport {
+  minLon: number;
+  minLat: number;
+  maxLon: number;
+  maxLat: number;
+}
+
+const clients = new Map<WebSocket, Viewport | null>();
+
+function inViewport(view: Viewport | null, lon: number, lat: number): boolean {
+  if (!view) return true;
+  return lon >= view.minLon && lon <= view.maxLon && lat >= view.minLat && lat <= view.maxLat;
+}
 
 app.log.info(
   { serviceDate: store.meta.serviceDate, ...store.meta.counts },
@@ -48,10 +68,17 @@ const stopGps = startGpsPoller({
   onError: (err) => app.log.error({ err }, 'gps poll failed'),
 });
 
-function broadcast(payload: string | ArrayBuffer): void {
-  const data = typeof payload === 'string' ? payload : Buffer.from(payload);
-  for (const socket of clients) {
-    if (socket.readyState === socket.OPEN) socket.send(data);
+function broadcast(payload: string): void {
+  for (const socket of clients.keys()) {
+    if (socket.readyState === socket.OPEN) socket.send(payload);
+  }
+}
+
+function broadcastPositions(all: VehicleState[], nowMs: number): void {
+  for (const [socket, view] of clients) {
+    if (socket.readyState !== socket.OPEN) continue;
+    const visible = view ? all.filter((v) => inViewport(view, v.lon, v.lat)) : all;
+    socket.send(Buffer.from(encodePositions(visible, nowMs)));
   }
 }
 
@@ -67,7 +94,7 @@ const ticker = setInterval(() => {
     if (result.removed.length) {
       broadcast(JSON.stringify({ t: 'del', v: result.removed }));
     }
-    broadcast(encodePositions(result.all, Date.now()));
+    broadcastPositions(result.all, Date.now());
   }
   if (Date.now() - lastStatsLog > 30_000) {
     lastStatsLog = Date.now();
@@ -116,14 +143,36 @@ app.get<{ Params: { vid: string } }>('/vehicles/:vid', async (req, reply) => {
 });
 
 app.get('/live', { websocket: true }, (socket) => {
-  clients.add(socket);
+  clients.set(socket, null);
   const all = engine.snapshot();
   socket.send(JSON.stringify({ t: 'hello', meta: store.meta, tickMs: ENV.tickMs }));
   socket.send(JSON.stringify({ t: 'add', v: encodeAdded(all) }));
   socket.send(Buffer.from(encodePositions(all, Date.now())));
+
+  socket.on('message', (raw: Buffer) => {
+    try {
+      const msg = JSON.parse(raw.toString()) as { t?: string; b?: number[] };
+      if (msg.t !== 'view' || !Array.isArray(msg.b) || msg.b.length !== 4) return;
+      const [minLon, minLat, maxLon, maxLat] = msg.b as [number, number, number, number];
+      if (![minLon, minLat, maxLon, maxLat].every(Number.isFinite)) return;
+      clients.set(socket, { minLon, minLat, maxLon, maxLat });
+    } catch {
+      clients.set(socket, clients.get(socket) ?? null);
+    }
+  });
+
   socket.on('close', () => clients.delete(socket));
   socket.on('error', () => clients.delete(socket));
 });
+
+if (serveWeb) {
+  app.setNotFoundHandler((req, reply) => {
+    if (req.method !== 'GET' || req.url.startsWith('/data/')) {
+      return reply.code(404).send({ error: 'not found' });
+    }
+    return reply.sendFile('index.html', WEB_DIST);
+  });
+}
 
 const shutdown = async (): Promise<void> => {
   clearInterval(ticker);

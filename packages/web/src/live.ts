@@ -41,6 +41,7 @@ export class LiveFeed {
   private retryMs = 800;
   private closed = false;
   private tickMs = 1000;
+  private viewport: [number, number, number, number] | null = null;
 
   constructor(private readonly url: string, private readonly handlers: LiveHandlers) {}
 
@@ -51,6 +52,17 @@ export class LiveFeed {
   stop(): void {
     this.closed = true;
     this.socket?.close();
+  }
+
+  reportViewport(bounds: [number, number, number, number]): void {
+    this.viewport = bounds;
+    this.sendViewport();
+  }
+
+  private sendViewport(): void {
+    if (!this.viewport) return;
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify({ t: 'view', b: this.viewport }));
   }
 
   get current(): Map<number, Vehicle> {
@@ -66,6 +78,7 @@ export class LiveFeed {
     socket.onopen = () => {
       this.retryMs = 800;
       this.handlers.onStatus('live');
+      this.sendViewport();
     };
 
     socket.onmessage = (event) => {
