@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
@@ -6,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import type { WebSocket } from 'ws';
 
+import { guardHttp, isAdmin, isAllowedOrigin, socketOriginAllowed } from './access.js';
 import { buildDepartureBoard, DepartureIndex } from './departures.js';
 import { DestinationResolver } from './destinations.js';
 import { Engine, type VehicleState } from './engine.js';
@@ -25,8 +27,30 @@ const DATA_CACHE_CONTROL = 'public, max-age=300, s-maxage=3600, stale-while-reva
 const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const HTML_CACHE_CONTROL = 'public, max-age=0, must-revalidate';
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
-await app.register(cors, { origin: true });
+const app = Fastify({
+  logger: { level: process.env.LOG_LEVEL ?? 'info' },
+  trustProxy: (_address, hop) => hop < ENV.proxyHops,
+});
+
+await app.register(cors, {
+  credentials: false,
+  origin: (origin, cb) => cb(null, origin === undefined || isAllowedOrigin(origin)),
+});
+
+await app.register(rateLimit, {
+  global: true,
+  max: ENV.rateLimitMax,
+  timeWindow: ENV.rateLimitWindowMs,
+  allowList: (req) => req.url === '/health' && isAdmin(req),
+});
+
+const GUARDED_PREFIXES = ['/data/', '/stops/', '/vehicles/'];
+
+app.addHook('onRequest', async (req, reply) => {
+  if (!GUARDED_PREFIXES.some((prefix) => req.url.startsWith(prefix))) return;
+  if (!guardHttp(req, reply)) return reply;
+});
+
 await app.register(websocket, { options: { maxPayload: 1 << 22 } });
 await app.register(fastifyStatic, {
   root: ENV.webDataDir,
@@ -59,6 +83,21 @@ interface Viewport {
 }
 
 const clients = new Map<WebSocket, Viewport | null>();
+const socketsPerIp = new Map<string, number>();
+
+function socketsFor(ip: string): number {
+  return socketsPerIp.get(ip) ?? 0;
+}
+
+function trackSocket(ip: string): void {
+  socketsPerIp.set(ip, socketsFor(ip) + 1);
+}
+
+function untrackSocket(ip: string): void {
+  const next = socketsFor(ip) - 1;
+  if (next > 0) socketsPerIp.set(ip, next);
+  else socketsPerIp.delete(ip);
+}
 
 function inViewport(view: Viewport | null, lon: number, lat: number): boolean {
   if (!view) return true;
@@ -150,25 +189,28 @@ const ticker = setInterval(() => {
   }
 }, ENV.tickMs);
 
-app.get('/health', async () => ({
-  ok: true,
-  serviceDate: store.meta.serviceDate,
-  generatedAt: store.meta.generatedAt,
-  counts: store.meta.counts,
-  rt: engine.rtInfo,
-  gps: engine.gpsInfo,
-  destinations: destinations.stats,
-  correctionsAbsorbed: engine.correctionsAbsorbed,
-  clients: clients.size,
-  vehicles: engine.snapshot().length,
-}));
-
-app.get('/vehicles', async () => {
-  const all = engine.snapshot();
-  return { count: all.length, vehicles: all };
+app.get('/health', async (req) => {
+  const summary = {
+    ok: true,
+    serviceDate: store.meta.serviceDate,
+    generatedAt: store.meta.generatedAt,
+  };
+  if (!isAdmin(req)) return summary;
+  return {
+    ...summary,
+    counts: store.meta.counts,
+    rt: engine.rtInfo,
+    gps: engine.gpsInfo,
+    destinations: destinations.stats,
+    correctionsAbsorbed: engine.correctionsAbsorbed,
+    clients: clients.size,
+    vehicles: engine.snapshot().length,
+  };
 });
 
-app.get<{ Params: { vid: string } }>('/vehicles/:vid', async (req, reply) => {
+app.get<{ Params: { vid: string } }>('/vehicles/:vid', {
+  config: { rateLimit: { max: ENV.apiRateLimitMax, timeWindow: ENV.rateLimitWindowMs } },
+}, async (req, reply) => {
   const vehicle = engine.find(Number(req.params.vid));
   if (!vehicle) return reply.code(404).send({ error: 'unknown vehicle' });
   const trip = vehicle.tripId ? store.tripById.get(vehicle.tripId) : undefined;
@@ -192,6 +234,7 @@ const MAX_DEPARTURE_LIMIT = 50;
 
 app.get<{ Params: { stopPlaceId: string }; Querystring: { limit?: string } }>(
   '/stops/:stopPlaceId/departures',
+  { config: { rateLimit: { max: ENV.apiRateLimitMax, timeWindow: ENV.rateLimitWindowMs } } },
   async (req, reply) => {
     const place = store.stopPlaceIdxById.get(req.params.stopPlaceId);
     if (place === undefined) return reply.code(404).send({ error: 'unknown stop' });
@@ -204,7 +247,17 @@ app.get<{ Params: { stopPlaceId: string }; Querystring: { limit?: string } }>(
   },
 );
 
-app.get('/live', { websocket: true }, (socket) => {
+app.get('/live', {
+  websocket: true,
+  onRequest: async (req, reply) => {
+    if (!socketOriginAllowed(req)) return reply.code(403).send({ error: 'forbidden' });
+    if (socketsFor(req.ip) >= ENV.maxSocketsPerIp) {
+      return reply.code(429).send({ error: 'too many connections' });
+    }
+  },
+}, (socket, req) => {
+  const ip = req.ip;
+  trackSocket(ip);
   clients.set(socket, null);
   socket.send(HELLO_PAYLOAD);
   socket.send(snapshotAddPayload());
@@ -222,8 +275,11 @@ app.get('/live', { websocket: true }, (socket) => {
     }
   });
 
-  socket.on('close', () => clients.delete(socket));
-  socket.on('error', () => clients.delete(socket));
+  const drop = (): void => {
+    if (clients.delete(socket)) untrackSocket(ip);
+  };
+  socket.on('close', drop);
+  socket.on('error', drop);
 });
 
 if (serveWeb) {

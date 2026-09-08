@@ -34,6 +34,12 @@ docker compose build
 log "rolling the server"
 docker compose up -d
 
+log "reloading the caddy config"
+if ! docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+	log "caddy reload failed, restarting the container instead"
+	docker compose restart caddy
+fi
+
 rollback() {
 	log "ROLLING BACK to ${PREVIOUS:0:8}"
 	cd "$REPO"
@@ -41,6 +47,8 @@ rollback() {
 	cd "$REPO/deploy"
 	docker compose build
 	docker compose up -d
+	docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile ||
+		docker compose restart caddy
 	for _ in $(seq 1 "$HEALTH_ATTEMPTS"); do
 		sleep 5
 		if health >/dev/null 2>&1; then

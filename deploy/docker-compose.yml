@@ -23,6 +23,14 @@ services:
       RT_POLL_MS: ${RT_POLL_MS:-30000}
       VM_POLL_MS: ${VM_POLL_MS:-8000}
       ET_CLIENT_NAME: ${ET_CLIENT_NAME:?set ET_CLIENT_NAME in deploy/.env}
+      NODE_ENV: production
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      STRICT_SAME_SITE: ${STRICT_SAME_SITE:-true}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-600}
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-90}
+      MAX_SOCKETS_PER_IP: ${MAX_SOCKETS_PER_IP:-20}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NODE_OPTIONS: --max-old-space-size=640
     volumes:

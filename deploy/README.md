@@ -137,12 +137,21 @@ docker compose restart server
 ## Verify
 
 ```sh
-curl -s https://$SITE_ADDRESS/health | jq '{serviceDate, counts, clients, vehicles}'
+curl -s https://$SITE_ADDRESS/health | jq
+# public callers get {ok, serviceDate, generatedAt} only
 
-curl -sI https://$SITE_ADDRESS/data/meta.json | grep -i cache-control
+docker compose exec -T server node -e \
+  "fetch('http://127.0.0.1:8787/health').then(r=>r.json()).then(h=>console.log(JSON.stringify(h,null,2)))"
+# from inside the container you get counts, rt, gps, clients, vehicles
+
+curl -sI -H 'Sec-Fetch-Site: same-origin' https://$SITE_ADDRESS/data/meta.json | grep -i cache-control
 # public, max-age=300, s-maxage=3600, stale-while-revalidate=86400
 
-curl -s "https://$SITE_ADDRESS/stops/NSR%3AStopPlace%3A58163/departures?limit=3" | jq
+curl -s -H 'Sec-Fetch-Site: same-origin' \
+  "https://$SITE_ADDRESS/stops/NSR%3AStopPlace%3A58163/departures?limit=3" | jq
+
+curl -s -o /dev/null -w '%{http_code}\n' https://$SITE_ADDRESS/data/meta.json
+# 403 - a request with no browser context is refused
 
 docker compose ps
 docker stats --no-stream
@@ -151,6 +160,41 @@ journalctl -u byradar-refresh.service -n 50
 
 `serviceDate` in `/health` must be today's Oslo date. If it is yesterday's, the
 nightly job did not run or the pipeline failed; check the journal.
+
+## Access control
+
+`/data/*`, `/stops/*`, `/vehicles/*` and `/live` are for the site's own frontend,
+not for other callers. What enforces that:
+
+| Control | Env | Default |
+| --- | --- | --- |
+| CORS allowlist (no more origin reflection) | `ALLOWED_ORIGINS` | own origin + localhost in dev |
+| Same-site gate on data and API routes | `STRICT_SAME_SITE` | `true` |
+| `/live` refuses a handshake without an allowed `Origin` | `STRICT_SAME_SITE` | `true` |
+| Requests per IP per minute, all routes | `RATE_LIMIT_MAX` | 600 |
+| Requests per IP per minute, departures and vehicle detail | `API_RATE_LIMIT_MAX` | 90 |
+| Live sockets per IP | `MAX_SOCKETS_PER_IP` | 20 |
+| Client IP taken from the proxy, one hop | `TRUST_PROXY_HOPS` | 1 |
+| Full `/health` for loopback or a bearer token | `ADMIN_TOKEN` | unset (loopback only) |
+
+`ALLOWED_ORIGINS` is a comma-separated list; a bare hostname is read as `https://`.
+Leave it empty when the frontend is served from the same origin as the API, which
+is the case in this compose file: the request's own origin always passes.
+
+Set `ADMIN_TOKEN` only if you want `/health` diagnostics from outside the box;
+`provision.sh` and `refresh-data.sh` read them over loopback and need no token.
+
+What this does and does not buy:
+
+- Other websites can no longer call the API or open `/live`. The browser sets
+  `Origin` and `Sec-Fetch-Site`, and page JavaScript cannot forge them.
+- Bulk scraping now costs a rate limit and a socket cap per IP.
+- It does **not** stop someone who copies the headers into `curl` or drives a
+  headless browser. The app is public, so its data is reachable by anyone
+  willing to imitate a browser. Treat these controls as a cost, not a wall.
+
+`STRICT_SAME_SITE=false` turns the gate off if a client turns out to send none of
+`Sec-Fetch-Site`, `Origin` or `Referer`. CORS and the rate limits stay on.
 
 ## Choosing the machine
 
@@ -265,6 +309,12 @@ or `/live` will not connect.
 Cloudflare caches `/data/*` for an hour (`s-maxage=3600`) and `/assets/*` forever,
 which is where most of the egress saving comes from. `/live` and `/health` are not
 cacheable and pass through.
+
+Guarded responses carry `Vary: Origin, Sec-Fetch-Site` so a cached copy is not
+handed to a request the origin would have refused. Cloudflare only honours `Vary`
+on `Accept-Encoding` for free plans, so on a free plan a cached `/data/*` file is
+served to any caller regardless of headers. The gate still protects `/live` and
+the API routes, which are never cached.
 
 ## Day-to-day
 
