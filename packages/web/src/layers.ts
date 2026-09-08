@@ -1,7 +1,9 @@
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer } from '@deck.gl/core';
 
-import { MODE_DRAW_ORDER, hexToRgb, punctuality } from './palette.js';
+import { LATE_AFTER_SECONDS, MODE_DRAW_ORDER, hexToRgb, punctuality } from './palette.js';
+import { NO_DEVIATIONS, hasDeviation } from './situations.js';
+import type { DeviationRoutes } from './situations.js';
 import { FOOTPRINT_ZOOM, isLight, lighten, metresPerPixel, realLengthPx } from './sizes.js';
 import type { SpriteSet } from './sprites.js';
 import type { AppState, LineFilter } from './state.js';
@@ -45,6 +47,7 @@ export interface LayerInput {
   vehicles: Vehicle[];
   sprites: SpriteSet;
   frame: number;
+  deviations: DeviationRoutes;
 }
 
 const colorCache = new Map<string, [number, number, number]>();
@@ -92,6 +95,25 @@ function stopColor(mode: Mode): string {
 export function onLine(vehicle: Vehicle, filter: LineFilter): boolean {
   if (vehicle.routeIdx >= 0) return vehicle.routeIdx === filter.idx;
   return vehicle.line === filter.route.line && vehicle.mode === filter.route.mode;
+}
+
+export function passesFilters(
+  vehicle: Vehicle,
+  state: AppState,
+  deviations: DeviationRoutes = NO_DEVIATIONS,
+): boolean {
+  if (!state.modes.has(vehicle.mode)) return false;
+  if (state.line && !onLine(vehicle, state.line)) return false;
+  if (state.punct === 'late' && vehicle.delay <= LATE_AFTER_SECONDS) return false;
+  if (state.punct === 'ontime' && vehicle.delay > LATE_AFTER_SECONDS) return false;
+  if (state.source === 'gps' && vehicle.source !== 'gps') return false;
+  if (state.source === 'est' && vehicle.source === 'gps') return false;
+  if (deviationGate(state, deviations) && !hasDeviation(deviations, vehicle)) return false;
+  return true;
+}
+
+function deviationGate(state: AppState, deviations: DeviationRoutes): boolean {
+  return state.onlyDeviations && deviations.idx.size > 0;
 }
 
 export function buildLayers(input: LayerInput): Layer[] {
@@ -158,14 +180,19 @@ function appendFixLayers(layers: Layer[], state: AppState): void {
 }
 
 function buildMapLayers(input: LayerInput): Layer[] {
-  const { state, zoom, latitude, mapBearing, network, stops, vehicles, sprites, frame } = input;
+  const { state, zoom, latitude, mapBearing, network, stops, vehicles, sprites, frame, deviations } = input;
   const layers: Layer[] = [];
   const lineFilter = state.line;
 
   if (state.showNetwork) {
     for (const mode of MODE_DRAW_ORDER) {
       if (!state.modes.has(mode)) continue;
-      const paths = network.filter((p) => p.m === mode && (!lineFilter || p.r === lineFilter.idx));
+      const paths = network.filter(
+        (p) =>
+          p.m === mode &&
+          (!lineFilter || p.r === lineFilter.idx) &&
+          (!deviationGate(state, deviations) || deviations.idx.has(p.r)),
+      );
       if (!paths.length) continue;
       const weight = pathWeight(mode, zoom);
 
@@ -241,9 +268,7 @@ function buildMapLayers(input: LayerInput): Layer[] {
     }
   }
 
-  const shown = vehicles.filter(
-    (v) => state.modes.has(v.mode) && (!lineFilter || onLine(v, lineFilter)),
-  );
+  const shown = vehicles.filter((v) => passesFilters(v, state, deviations));
   if (!shown.length) return layers;
 
   const mpp = metresPerPixel(latitude, zoom);

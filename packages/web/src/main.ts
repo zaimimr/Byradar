@@ -8,16 +8,17 @@ import { DATA_URL, API_URL, WS_URL } from './endpoints.js';
 import { locate } from './geo.js';
 import type { Fix } from './geo.js';
 import { LiveFeed } from './live.js';
-import { buildLayers } from './layers.js';
+import { buildLayers, passesFilters } from './layers.js';
 import { calmBasemap, createMap, setBuildingVisibility, setLabelVisibility, supportsBuildings } from './mapbase.js';
 import { buildSearchIndex } from './search.js';
 import type { SearchIndex, StopGroup } from './search.js';
 import { nearestGroups } from './nearby.js';
 import type { NearbyStop } from './nearby.js';
-import { loadSituations } from './situations.js';
+import { NO_DEVIATIONS, deviationRoutes, loadSituations } from './situations.js';
+import type { DeviationRoutes } from './situations.js';
 import { buildVehicleSprites } from './sprites.js';
-import { createState, hashHasView, readHashLineId, readHashStopId, syncHash } from './state.js';
-import type { LineFilter } from './state.js';
+import { createState, hashHasView, readHashLineId, readHashStopId, resetFilters, syncHash } from './state.js';
+import type { LineFilter, PunctFilter, SourceFilter } from './state.js';
 import { secondsIntoServiceDay } from './time.js';
 import { Ui } from './ui.js';
 import type { Coverage, DeparturesState, NearbyBoards } from './ui.js';
@@ -71,11 +72,18 @@ let stopRefreshTimer: number | undefined;
 let nearbyRefreshTimer: number | undefined;
 let nearbyToken = 0;
 let nearbyBoards: NearbyBoards = new Map();
+let deviations: DeviationRoutes = NO_DEVIATIONS;
 
 function serviceNowSec(): number {
   const serviceDate = liveServiceDate ?? meta?.serviceDate;
   if (!serviceDate) return 0;
   return secondsIntoServiceDay(serviceDate, Date.now() + serverSkewMs);
+}
+
+function applyFilters(): void {
+  ui.syncState(state);
+  syncHash(state);
+  refreshFilterSummary();
 }
 
 const ui = new Ui({
@@ -85,30 +93,46 @@ const ui = new Ui({
     } else {
       state.modes.add(mode);
     }
-    ui.syncState(state);
-    syncHash(state);
+    applyFilters();
   },
   onToggleNetwork: () => {
     state.showNetwork = !state.showNetwork;
-    ui.syncState(state);
-    syncHash(state);
+    applyFilters();
   },
   onToggleStops: () => {
     state.showStops = !state.showStops;
-    ui.syncState(state);
-    syncHash(state);
+    applyFilters();
   },
   onToggleLabels: () => {
     state.showLabels = !state.showLabels;
     setLabelVisibility(map, state.showLabels);
-    ui.syncState(state);
-    syncHash(state);
+    applyFilters();
   },
   onToggleBuildings: () => {
     state.showBuildings = !state.showBuildings;
     setBuildingVisibility(map, state.showBuildings);
-    ui.syncState(state);
-    syncHash(state);
+    applyFilters();
+  },
+  onSetPunct: (value: PunctFilter) => {
+    state.punct = value;
+    applyFilters();
+  },
+  onSetSource: (value: SourceFilter) => {
+    state.source = value;
+    applyFilters();
+  },
+  onToggleDeviations: () => {
+    state.onlyDeviations = !state.onlyDeviations;
+    applyFilters();
+  },
+  onReset: () => {
+    stopFollow();
+    resetFilters(state);
+    setLabelVisibility(map, state.showLabels);
+    setBuildingVisibility(map, state.showBuildings);
+    ui.setLineFilter(null);
+    ui.clearSearchQuery();
+    applyFilters();
   },
   onCloseInspector: () => closeInspector(),
   onToggleFollow: () => {
@@ -126,7 +150,7 @@ const ui = new Ui({
     stopFollow();
     state.line = { idx: hit.idx, route: hit.route };
     ui.setLineFilter(state.line);
-    syncHash(state);
+    applyFilters();
   },
   onPickStop: (hit) => {
     stopFollow();
@@ -148,9 +172,17 @@ const ui = new Ui({
     state.line = null;
     ui.setLineFilter(null);
     ui.clearSearchQuery();
-    syncHash(state);
+    applyFilters();
   },
 });
+
+function refreshFilterSummary(): void {
+  let shown = 0;
+  for (const vehicle of vehicles) {
+    if (passesFilters(vehicle, state, deviations)) shown++;
+  }
+  ui.setFilterSummary(shown, vehicles.length);
+}
 
 function closeInspector(): void {
   state.selected = null;
@@ -306,7 +338,12 @@ async function loadStatic(): Promise<void> {
 
 async function trackSituations(): Promise<void> {
   const index = await loadSituations(API);
-  if (index) ui.setSituations(index);
+  if (index) {
+    ui.setSituations(index);
+    deviations = deviationRoutes(index, routes);
+    ui.setDeviationLines(deviations.idx.size);
+    refreshFilterSummary();
+  }
   window.setTimeout(() => void trackSituations(), SITUATION_REFRESH_MS);
 }
 
@@ -325,6 +362,7 @@ function restoreLineFilter(): void {
   if (idx < 0) return;
   state.line = { idx, route: routes[idx]! };
   ui.setLineFilter(state.line);
+  ui.syncState(state);
 }
 
 async function loadDepartures(
@@ -465,6 +503,7 @@ const feed = new LiveFeed(WS_URL, {
     serverSkewMs = serverTime - Date.now();
     nowSec = serviceNowSec();
     ui.setStats(vehicles);
+    refreshFilterSummary();
     if (state.follow && !map_.has(state.follow.vid)) {
       const gone = state.follow.line || 'kjøretøyet';
       stopFollow(`linje ${gone} er ute av trafikk`);
@@ -497,6 +536,7 @@ function redraw(): void {
       vehicles,
       sprites,
       frame,
+      deviations,
     }),
     getTooltip: null,
     onHover: handleHover,

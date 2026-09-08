@@ -15,6 +15,9 @@ export interface LineFilter {
   route: RouteMeta;
 }
 
+export type PunctFilter = 'all' | 'ontime' | 'late';
+export type SourceFilter = 'all' | 'gps' | 'est';
+
 export interface FollowState {
   vid: number;
   line: string;
@@ -29,6 +32,9 @@ export interface AppState {
   showNetwork: boolean;
   showLabels: boolean;
   showBuildings: boolean;
+  punct: PunctFilter;
+  source: SourceFilter;
+  onlyDeviations: boolean;
   selected: number | null;
   selectedStop: string | null;
   stopAnchor: string | null;
@@ -60,6 +66,14 @@ function parseModes(raw: string | undefined): Set<Mode> {
   return wanted.length ? new Set(wanted) : new Set(MODE_RAIL_ORDER);
 }
 
+function parsePunct(raw: string | null): PunctFilter {
+  return raw === 'ontime' || raw === 'late' ? raw : 'all';
+}
+
+function parseSource(raw: string | null): SourceFilter {
+  return raw === 'gps' || raw === 'est' ? raw : 'all';
+}
+
 function readHash(): Partial<AppState> {
   const hash = location.hash.replace(/^#/, '');
   if (!hash) return {};
@@ -81,6 +95,9 @@ function readHash(): Partial<AppState> {
     showNetwork: params.get('lines') !== '0',
     showLabels: params.get('labels') !== '0',
     showBuildings: params.get('buildings') === '1',
+    punct: parsePunct(params.get('punct')),
+    source: parseSource(params.get('src')),
+    onlyDeviations: params.get('dev') === '1',
   };
 }
 
@@ -108,6 +125,9 @@ export function createState(): AppState {
     showNetwork: fromHash.showNetwork ?? true,
     showLabels: fromHash.showLabels ?? true,
     showBuildings: fromHash.showBuildings ?? false,
+    punct: fromHash.punct ?? 'all',
+    source: fromHash.source ?? 'all',
+    onlyDeviations: fromHash.onlyDeviations ?? false,
     selected: null,
     selectedStop: null,
     stopAnchor: null,
@@ -136,8 +156,37 @@ export function syncHash(state: AppState): void {
     if (!state.showNetwork) params.set('lines', '0');
     if (!state.showLabels) params.set('labels', '0');
     if (state.showBuildings) params.set('buildings', '1');
+    if (state.punct !== 'all') params.set('punct', state.punct);
+    if (state.source !== 'all') params.set('src', state.source);
+    if (state.onlyDeviations) params.set('dev', '1');
     if (state.line) params.set('line', state.line.route.id);
     if (state.stopAnchor) params.set('stop', state.stopAnchor);
     history.replaceState(null, '', `#${params.toString()}`);
   }, 220);
+}
+
+export function filtersDirty(state: AppState): boolean {
+  return (
+    state.modes.size !== MODE_RAIL_ORDER.length ||
+    !state.showStops ||
+    !state.showNetwork ||
+    !state.showLabels ||
+    state.showBuildings ||
+    state.punct !== 'all' ||
+    state.source !== 'all' ||
+    state.onlyDeviations ||
+    state.line !== null
+  );
+}
+
+export function resetFilters(state: AppState): void {
+  state.modes = new Set(MODE_RAIL_ORDER);
+  state.showStops = true;
+  state.showNetwork = true;
+  state.showLabels = true;
+  state.showBuildings = false;
+  state.punct = 'all';
+  state.source = 'all';
+  state.onlyDeviations = false;
+  state.line = null;
 }

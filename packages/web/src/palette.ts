@@ -38,6 +38,8 @@ export const PUNCTUALITY = [
   { limit: Infinity, key: 'verylate', label: 'over 7 min sen', hex: '#E0533C' },
 ] as const;
 
+export const LATE_AFTER_SECONDS = 180;
+
 export function punctuality(delaySeconds: number): (typeof PUNCTUALITY)[number] {
   for (const step of PUNCTUALITY) {
     if (delaySeconds <= step.limit) return step;

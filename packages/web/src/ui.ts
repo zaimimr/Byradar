@@ -15,7 +15,8 @@ import { flatten, search } from './search.js';
 import { EMPTY_SITUATION_INDEX, situationsFor } from './situations.js';
 import type { SituationIndex } from './situations.js';
 import type { LineHit, SearchHit, SearchIndex, StopGroup, StopHit } from './search.js';
-import type { AppState, FollowState, LineFilter } from './state.js';
+import { filtersDirty } from './state.js';
+import type { AppState, FollowState, LineFilter, PunctFilter, SourceFilter } from './state.js';
 import type { DataMeta, Departure, Mode, Situation, TimetableCoverage, Vehicle, VehicleDetail } from './types.js';
 
 const OSLO_CLOCK = new Intl.DateTimeFormat('nb-NO', {
@@ -32,6 +33,7 @@ const ALERT_BODY_CHARS = 260;
 const ALERT_PEEK_CHARS = 64;
 const DAY_MS = 86_400_000;
 const FLASH_MS = 6000;
+const ROOMY_QUERY = '(min-width: 901px) and (min-height: 880px)';
 const CROSSHAIR = `<svg class="rail__glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" stroke="none" /><circle cx="8" cy="8" r="5.6" fill="none" /><path d="M8 0.4v2.2M8 13.4v2.2M0.4 8h2.2M13.4 8h2.2" fill="none" /></svg>`;
 
 export type LocateState = 'idle' | 'busy' | 'active';
@@ -60,6 +62,10 @@ export interface UiCallbacks {
   onToggleNetwork: () => void;
   onToggleLabels: () => void;
   onToggleBuildings: () => void;
+  onSetPunct: (value: PunctFilter) => void;
+  onSetSource: (value: SourceFilter) => void;
+  onToggleDeviations: () => void;
+  onReset: () => void;
   onCloseInspector: () => void;
   onToggleFollow: () => void;
   onStopFollow: () => void;
@@ -76,6 +82,13 @@ export class Ui {
   private readonly pulse: Array<{ count: number; delay: number }> = [];
   private tooltip: HTMLDivElement | null = null;
   private toggles: Record<'stops' | 'network' | 'labels' | 'buildings', HTMLButtonElement> | null = null;
+  private punctOptions = new Map<PunctFilter, HTMLButtonElement>();
+  private sourceOptions = new Map<SourceFilter, HTMLButtonElement>();
+  private deviationToggle: HTMLButtonElement | null = null;
+  private deviationCount: HTMLElement | null = null;
+  private resetButton: HTMLButtonElement | null = null;
+  private summary: HTMLParagraphElement | null = null;
+  private filtersSeen = false;
   private locateButton: HTMLButtonElement | null = null;
   private noteTimer: number | undefined;
   private flash: HTMLParagraphElement | null = null;
@@ -87,6 +100,7 @@ export class Ui {
 
   constructor(private readonly callbacks: UiCallbacks) {
     this.buildRail();
+    this.buildFilters();
     this.buildLegendScale();
     this.buildPulse();
     this.buildSearch();
@@ -153,6 +167,86 @@ export class Ui {
     flash.hidden = true;
     rail.appendChild(flash);
     this.flash = flash;
+  }
+
+  private buildFilters(): void {
+    const body = el<HTMLElement>('filters-body');
+
+    this.punctOptions = this.buildSegment<PunctFilter>(
+      body,
+      'forsinkelse',
+      'Filtrer på forsinkelse',
+      [
+        { value: 'all', label: 'alle' },
+        { value: 'ontime', label: 'i rute' },
+        { value: 'late', label: 'sen' },
+      ],
+      (value) => this.callbacks.onSetPunct(value),
+    );
+
+    this.sourceOptions = this.buildSegment<SourceFilter>(
+      body,
+      'kilde',
+      'Filtrer på hvor posisjonen kommer fra',
+      [
+        { value: 'all', label: 'alle' },
+        { value: 'gps', label: 'gps' },
+        { value: 'est', label: 'est' },
+      ],
+      (value) => this.callbacks.onSetSource(value),
+    );
+
+    const deviations = document.createElement('button');
+    deviations.type = 'button';
+    deviations.className = 'filters__switch';
+    deviations.setAttribute('aria-pressed', 'false');
+    deviations.disabled = true;
+    deviations.innerHTML = `<span>kun avvik</span><b class="filters__badge" hidden></b><span class="tick"></span>`;
+    deviations.addEventListener('click', () => this.callbacks.onToggleDeviations());
+    body.appendChild(deviations);
+    this.deviationToggle = deviations;
+    this.deviationCount = deviations.querySelector('.filters__badge');
+
+    this.summary = el<HTMLParagraphElement>('filters-summary');
+    this.resetButton = el<HTMLButtonElement>('filters-reset');
+    this.resetButton.addEventListener('click', () => this.callbacks.onReset());
+
+    const panel = el<HTMLDetailsElement>('filters');
+    panel.open = window.matchMedia(ROOMY_QUERY).matches;
+  }
+
+  private buildSegment<T extends string>(
+    host: HTMLElement,
+    label: string,
+    description: string,
+    options: Array<{ value: T; label: string }>,
+    onPick: (value: T) => void,
+  ): Map<T, HTMLButtonElement> {
+    const group = document.createElement('div');
+    group.className = 'filters__group';
+    const caption = document.createElement('span');
+    caption.className = 'filters__label';
+    caption.textContent = label;
+    group.appendChild(caption);
+
+    const segment = document.createElement('div');
+    segment.className = 'seg';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', description);
+    const buttons = new Map<T, HTMLButtonElement>();
+    for (const option of options) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'seg__opt';
+      button.setAttribute('aria-pressed', String(option.value === options[0]?.value));
+      button.textContent = option.label;
+      button.addEventListener('click', () => onPick(option.value));
+      segment.appendChild(button);
+      buttons.set(option.value, button);
+    }
+    group.appendChild(segment);
+    host.appendChild(group);
+    return buttons;
   }
 
   private buildLegendScale(): void {
@@ -455,6 +549,39 @@ export class Ui {
       this.toggles.labels.setAttribute('aria-pressed', String(state.showLabels));
       this.toggles.buildings.setAttribute('aria-pressed', String(state.showBuildings));
     }
+    for (const [value, button] of this.punctOptions) {
+      button.setAttribute('aria-pressed', String(value === state.punct));
+    }
+    for (const [value, button] of this.sourceOptions) {
+      button.setAttribute('aria-pressed', String(value === state.source));
+    }
+    this.deviationToggle?.setAttribute('aria-pressed', String(state.onlyDeviations));
+    const dirty = filtersDirty(state);
+    if (this.resetButton) this.resetButton.disabled = !dirty;
+    el<HTMLElement>('filters-dot').hidden = !dirty;
+    if (!this.filtersSeen) {
+      this.filtersSeen = true;
+      if (dirty) el<HTMLDetailsElement>('filters').open = true;
+    }
+  }
+
+  setDeviationLines(count: number): void {
+    if (!this.deviationToggle || !this.deviationCount) return;
+    this.deviationCount.textContent = `(${count})`;
+    this.deviationToggle.title = `${count} linjer har meldte avvik nå`;
+    this.deviationCount.hidden = count === 0;
+    this.deviationToggle.disabled = count === 0;
+  }
+
+  setFilterSummary(shown: number, total: number): void {
+    if (!this.summary) return;
+    if (shown === total) {
+      this.summary.hidden = true;
+      this.summary.textContent = '';
+      return;
+    }
+    this.summary.textContent = `viser ${shown} av ${total} kjøretøy`;
+    this.summary.hidden = false;
   }
 
   setStats(vehicles: Vehicle[]): void {
