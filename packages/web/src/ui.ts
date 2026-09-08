@@ -33,8 +33,9 @@ const ALERT_BODY_CHARS = 260;
 const ALERT_PEEK_CHARS = 64;
 const DAY_MS = 86_400_000;
 const FLASH_MS = 6000;
-const ROOMY_QUERY = '(min-width: 901px) and (min-height: 880px)';
 const CROSSHAIR = `<svg class="rail__glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" stroke="none" /><circle cx="8" cy="8" r="5.6" fill="none" /><path d="M8 0.4v2.2M8 13.4v2.2M0.4 8h2.2M13.4 8h2.2" fill="none" /></svg>`;
+
+const RESET_GLYPH = `<svg class="rail__glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.75" fill="none" /><path d="M13.4 1.9v3.1h-3.1" fill="none" /></svg>`;
 
 export type LocateState = 'idle' | 'busy' | 'active';
 
@@ -88,7 +89,6 @@ export class Ui {
   private deviationCount: HTMLElement | null = null;
   private resetButton: HTMLButtonElement | null = null;
   private summary: HTMLParagraphElement | null = null;
-  private filtersSeen = false;
   private locateButton: HTMLButtonElement | null = null;
   private noteTimer: number | undefined;
   private flash: HTMLParagraphElement | null = null;
@@ -100,7 +100,6 @@ export class Ui {
 
   constructor(private readonly callbacks: UiCallbacks) {
     this.buildRail();
-    this.buildFilters();
     this.buildLegendScale();
     this.buildPulse();
     this.buildSearch();
@@ -146,9 +145,11 @@ export class Ui {
       buildings: makeToggle('bygg', () => this.callbacks.onToggleBuildings()),
     };
 
-    const actionDivider = document.createElement('div');
-    actionDivider.className = 'rail__divider';
-    rail.appendChild(actionDivider);
+    this.buildFilters(rail);
+
+    const actions = document.createElement('div');
+    actions.className = 'rail__actions';
+    rail.appendChild(actions);
 
     const locate = document.createElement('button');
     locate.type = 'button';
@@ -158,8 +159,20 @@ export class Ui {
     locate.setAttribute('aria-label', 'Min posisjon');
     locate.innerHTML = `${CROSSHAIR}<span class="rail__action-label">min posisjon</span>`;
     locate.addEventListener('click', () => this.callbacks.onLocate());
-    rail.appendChild(locate);
+    actions.appendChild(locate);
     this.locateButton = locate;
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'rail__action';
+    reset.disabled = true;
+    reset.title = 'Nullstill filtre';
+    reset.setAttribute('aria-label', 'Nullstill filtre');
+    reset.className = 'rail__action rail__action--icon';
+    reset.innerHTML = RESET_GLYPH;
+    reset.addEventListener('click', () => this.callbacks.onReset());
+    actions.appendChild(reset);
+    this.resetButton = reset;
 
     const flash = document.createElement('p');
     flash.className = 'rail__flash';
@@ -169,12 +182,10 @@ export class Ui {
     this.flash = flash;
   }
 
-  private buildFilters(): void {
-    const body = el<HTMLElement>('filters-body');
-
+  private buildFilters(rail: HTMLElement): void {
     this.punctOptions = this.buildSegment<PunctFilter>(
-      body,
-      'forsinkelse',
+      rail,
+      'tid',
       'Filtrer på forsinkelse',
       [
         { value: 'all', label: 'alle' },
@@ -185,7 +196,7 @@ export class Ui {
     );
 
     this.sourceOptions = this.buildSegment<SourceFilter>(
-      body,
+      rail,
       'kilde',
       'Filtrer på hvor posisjonen kommer fra',
       [
@@ -198,21 +209,21 @@ export class Ui {
 
     const deviations = document.createElement('button');
     deviations.type = 'button';
-    deviations.className = 'filters__switch';
+    deviations.className = 'rail__toggle rail__toggle--filter';
     deviations.setAttribute('aria-pressed', 'false');
     deviations.disabled = true;
-    deviations.innerHTML = `<span>kun avvik</span><b class="filters__badge" hidden></b><span class="tick"></span>`;
+    deviations.innerHTML = `<span>kun avvik<b class="rail__badge" hidden></b></span><span class="tick"></span>`;
     deviations.addEventListener('click', () => this.callbacks.onToggleDeviations());
-    body.appendChild(deviations);
+    rail.appendChild(deviations);
     this.deviationToggle = deviations;
-    this.deviationCount = deviations.querySelector('.filters__badge');
+    this.deviationCount = deviations.querySelector('.rail__badge');
 
-    this.summary = el<HTMLParagraphElement>('filters-summary');
-    this.resetButton = el<HTMLButtonElement>('filters-reset');
-    this.resetButton.addEventListener('click', () => this.callbacks.onReset());
-
-    const panel = el<HTMLDetailsElement>('filters');
-    panel.open = window.matchMedia(ROOMY_QUERY).matches;
+    const summary = document.createElement('p');
+    summary.className = 'rail__summary';
+    summary.setAttribute('role', 'status');
+    summary.hidden = true;
+    rail.appendChild(summary);
+    this.summary = summary;
   }
 
   private buildSegment<T extends string>(
@@ -223,9 +234,9 @@ export class Ui {
     onPick: (value: T) => void,
   ): Map<T, HTMLButtonElement> {
     const group = document.createElement('div');
-    group.className = 'filters__group';
+    group.className = 'rail__group';
     const caption = document.createElement('span');
-    caption.className = 'filters__label';
+    caption.className = 'rail__label';
     caption.textContent = label;
     group.appendChild(caption);
 
@@ -557,17 +568,15 @@ export class Ui {
     }
     this.deviationToggle?.setAttribute('aria-pressed', String(state.onlyDeviations));
     const dirty = filtersDirty(state);
-    if (this.resetButton) this.resetButton.disabled = !dirty;
-    el<HTMLElement>('filters-dot').hidden = !dirty;
-    if (!this.filtersSeen) {
-      this.filtersSeen = true;
-      if (dirty) el<HTMLDetailsElement>('filters').open = true;
+    if (this.resetButton) {
+      this.resetButton.disabled = !dirty;
+      this.resetButton.dataset.state = dirty ? 'active' : 'idle';
     }
   }
 
   setDeviationLines(count: number): void {
     if (!this.deviationToggle || !this.deviationCount) return;
-    this.deviationCount.textContent = `(${count})`;
+    this.deviationCount.textContent = ` (${count})`;
     this.deviationToggle.title = `${count} linjer har meldte avvik nå`;
     this.deviationCount.hidden = count === 0;
     this.deviationToggle.disabled = count === 0;
