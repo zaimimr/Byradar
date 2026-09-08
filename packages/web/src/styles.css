@@ -1125,7 +1125,7 @@ body {
 
 .dep {
   display: grid;
-  grid-template-columns: 30px 1fr auto;
+  grid-template-columns: minmax(30px, max-content) 1fr auto;
   align-items: baseline;
   gap: 9px;
   padding: 7px 0;
@@ -1382,7 +1382,7 @@ body {
 
 .near__dep {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: minmax(28px, max-content) 1fr auto;
   align-items: center;
   gap: 8px;
   padding: 3px 0;

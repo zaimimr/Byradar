@@ -176,6 +176,7 @@ not for other callers. What enforces that:
 | Live sockets per IP | `MAX_SOCKETS_PER_IP` | 20 |
 | Client IP taken from the proxy, one hop | `TRUST_PROXY_HOPS` | 1 |
 | Full `/health` for loopback or a bearer token | `ADMIN_TOKEN` | unset (loopback only) |
+| Journey Planner fallback for stops with no local timetable | `REMOTE_BOARDS` | `true` |
 
 `ALLOWED_ORIGINS` is a comma-separated list; a bare hostname is read as `https://`.
 Leave it empty when the frontend is served from the same origin as the API, which

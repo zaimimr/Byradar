@@ -61,6 +61,7 @@ export const ENV = {
   rateLimitMax: int('RATE_LIMIT_MAX', 600),
   rateLimitWindowMs: int('RATE_LIMIT_WINDOW_MS', 60_000),
   apiRateLimitMax: int('API_RATE_LIMIT_MAX', 90),
+  remoteBoards: bool('REMOTE_BOARDS', true),
   maxSocketsPerIp: int('MAX_SOCKETS_PER_IP', 20),
   adminToken: process.env.ADMIN_TOKEN ?? '',
 } as const;
@@ -68,4 +69,5 @@ export const ENV = {
 export const ENTUR = {
   tripUpdates: 'https://api.entur.io/realtime/v1/gtfs-rt/trip-updates',
   vehiclesGraphql: 'https://api.entur.io/realtime/v2/vehicles/graphql',
+  journeyPlanner: 'https://api.entur.io/journey-planner/v3/graphql',
 } as const;

@@ -8,7 +8,8 @@ import { resolve, sep } from 'node:path';
 import type { WebSocket } from 'ws';
 
 import { guardHttp, isAdmin, isAllowedOrigin, socketOriginAllowed } from './access.js';
-import { buildDepartureBoard, DepartureIndex } from './departures.js';
+import { RemoteBoards } from './boards.js';
+import { buildDepartureBoard, DepartureIndex, withRemoteDepartures } from './departures.js';
 import { DestinationResolver } from './destinations.js';
 import { Engine, type VehicleState } from './engine.js';
 import { startGpsPoller } from './entur.js';
@@ -22,6 +23,7 @@ const store = await Store.load();
 const destinations = new DestinationResolver(store.journeyHeadsigns);
 const engine = new Engine(store, destinations);
 const departureIndex = DepartureIndex.build(store);
+const remoteBoards = new RemoteBoards(store.meta.serviceDate);
 
 const DATA_CACHE_CONTROL = 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
 const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
@@ -202,6 +204,7 @@ app.get('/health', async (req) => {
     rt: engine.rtInfo,
     gps: engine.gpsInfo,
     destinations: destinations.stats,
+    remoteBoards: remoteBoards.stats,
     correctionsAbsorbed: engine.correctionsAbsorbed,
     clients: clients.size,
     vehicles: engine.snapshot().length,
@@ -243,7 +246,12 @@ app.get<{ Params: { stopPlaceId: string }; Querystring: { limit?: string } }>(
       ? Math.min(MAX_DEPARTURE_LIMIT, Math.max(1, Math.trunc(requested)))
       : DEFAULT_DEPARTURE_LIMIT;
     const nowSec = secondsIntoServiceDay(store.meta.serviceDate);
-    return buildDepartureBoard(store, engine, departureIndex, place, nowSec, limit);
+    const board = buildDepartureBoard(store, engine, departureIndex, place, nowSec, limit);
+    const missing = board.stop.missingModes;
+    if (!missing.length) return board;
+
+    const remote = await remoteBoards.board(req.params.stopPlaceId, missing, nowSec);
+    return withRemoteDepartures(board, remote, missing, limit);
   },
 );
 

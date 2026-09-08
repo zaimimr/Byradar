@@ -1,3 +1,4 @@
+import type { RemoteBoard } from './boards.js';
 import type { Engine, VehicleSource } from './engine.js';
 import { delayAtSeq, isSkipped } from './rt.js';
 import { CALL_DEP, CALL_QUAY, CALL_SEQ, NO_STOP_PLACE, type StopPlaceMeta, type Store } from './store.js';
@@ -199,4 +200,25 @@ export function buildDepartureBoard(
     stop: { ...store.stopPlaces[place]!, ...index.coverageOf(place) },
     departures: rows.slice(0, limit),
   };
+}
+
+export function withRemoteDepartures(
+  board: DepartureBoard,
+  remote: RemoteBoard,
+  askedModes: readonly string[],
+  limit: number,
+): DepartureBoard {
+  if (!remote.ok) return board;
+
+  const departures = [...board.departures, ...remote.rows]
+    .sort((a, b) => a.expected - b.expected)
+    .slice(0, limit);
+  const missingModes = board.stop.missingModes.filter((mode) => !askedModes.includes(mode));
+  const timetable: TimetableCoverage = !missingModes.length
+    ? 'full'
+    : missingModes.length === board.stop.modes.length
+      ? 'none'
+      : 'partial';
+
+  return { stop: { ...board.stop, missingModes, timetable }, departures };
 }

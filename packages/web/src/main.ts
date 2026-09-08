@@ -60,14 +60,16 @@ let vehicles: Vehicle[] = [];
 let liveById = new Map<number, Vehicle>();
 let frame = 0;
 let serverSkewMs = 0;
+let liveServiceDate: string | null = null;
 let stopRefreshTimer: number | undefined;
 let nearbyRefreshTimer: number | undefined;
 let nearbyToken = 0;
 let nearbyBoards: NearbyBoards = new Map();
 
 function serviceNowSec(): number {
-  if (!meta) return 0;
-  return secondsIntoServiceDay(meta.serviceDate, Date.now() + serverSkewMs);
+  const serviceDate = liveServiceDate ?? meta?.serviceDate;
+  if (!serviceDate) return 0;
+  return secondsIntoServiceDay(serviceDate, Date.now() + serverSkewMs);
 }
 
 const ui = new Ui({
@@ -439,7 +441,10 @@ async function findMe(): Promise<void> {
 }
 
 const feed = new LiveFeed(WS_URL, {
-  onHello: () => {},
+  onHello: (helloMeta) => {
+    const serviceDate = (helloMeta as Partial<DataMeta> | null)?.serviceDate;
+    if (typeof serviceDate === 'string' && serviceDate.length === 8) liveServiceDate = serviceDate;
+  },
   onFrame: (map_, serverTime) => {
     const cutoff = Date.now() - STALE_AFTER_MS;
     liveById = map_;

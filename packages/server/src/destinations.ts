@@ -1,6 +1,5 @@
-import { ENV } from './env.js';
+import { ENTUR, ENV } from './env.js';
 
-const JOURNEY_PLANNER = 'https://api.entur.io/journey-planner/v3/graphql';
 const NEGATIVE_TTL_MS = 30 * 60_000;
 const MAX_INFLIGHT = 4;
 const QUERY_SPACING_MS = 400;
@@ -112,7 +111,7 @@ export class DestinationResolver {
       variables: { id: journeyId },
     });
 
-    const res = await fetch(JOURNEY_PLANNER, {
+    const res = await fetch(ENTUR.journeyPlanner, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'ET-Client-Name': ENV.clientName },
       body,
