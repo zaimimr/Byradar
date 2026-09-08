@@ -223,6 +223,10 @@ body {
   box-shadow: 0 0 9px -1px var(--c);
 }
 
+.mode__short {
+  display: none;
+}
+
 .mode__count {
   font-family: var(--mono);
   font-size: 10px;
@@ -1847,6 +1851,7 @@ body {
 @media (max-width: 620px), (max-height: 520px) {
   :root {
     --gap: 8px;
+    --peek: 34vh;
   }
 
   .chrome {
@@ -1951,8 +1956,35 @@ body {
     white-space: nowrap;
   }
 
+  .mode {
+    gap: 7px;
+    padding: 8px 8px 8px 6px;
+    font-size: 12px;
+  }
+
+  .mode__long {
+    display: none;
+  }
+
+  .mode__short {
+    display: inline;
+  }
+
+  .rail__toggle {
+    gap: 6px;
+    padding: 7px 8px;
+    font-size: 8.5px;
+  }
+
   .rail__action {
     order: -1;
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .rail__action-label {
+    display: none;
   }
 
   .rail__flash {
@@ -2002,7 +2034,71 @@ body {
   }
 
   .inspector[data-sheet='peek'] {
-    max-height: 34vh;
+    max-height: var(--peek);
+  }
+
+  .rail,
+  .attrib {
+    transition: bottom 260ms cubic-bezier(0.16, 0.84, 0.28, 1);
+  }
+
+  .chrome:has(.inspector:not([hidden])) .rail {
+    bottom: -88px;
+    pointer-events: none;
+  }
+
+  .chrome:has(.inspector:not([hidden])) .attrib {
+    bottom: -32px;
+  }
+
+  .chrome:has(.inspector:not([hidden])[data-sheet='peek']) .rail {
+    bottom: calc(var(--peek) + 10px);
+    pointer-events: auto;
+  }
+
+  .inspector[data-view='stop'] .veh__mode,
+  .inspector[data-view='nearby'] .veh__mode,
+  .inspector[data-view='stop'] .calls__title,
+  .inspector[data-sheet='peek'] .veh__mode,
+  .inspector[data-sheet='peek'] .stop__modes,
+  .inspector[data-sheet='peek'] .alerts,
+  .inspector[data-sheet='peek'] .calls__title {
+    display: none;
+  }
+
+  .inspector[data-sheet='peek'] .stop__body {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
+  .inspector[data-sheet='peek'] .deps {
+    margin-top: 0;
+  }
+
+  .stop__modes {
+    margin-top: 6px;
+  }
+
+  .stop__body {
+    margin-top: 9px;
+    padding-top: 9px;
+  }
+
+  .alerts {
+    margin-top: 9px;
+    padding-top: 9px;
+  }
+
+  .deps {
+    margin-top: 7px;
+  }
+
+  .calls__title {
+    margin-bottom: 6px;
+  }
+
+  .attrib__om {
+    font-size: 9.5px;
   }
 
   .inspector__grip {
@@ -2082,7 +2178,9 @@ body {
 
 @media (max-width: 620px) and (prefers-reduced-motion: reduce),
   (max-height: 520px) and (prefers-reduced-motion: reduce) {
-  .inspector {
+  .inspector,
+  .rail,
+  .attrib {
     animation: none;
     transition: none;
   }
@@ -2113,6 +2211,20 @@ body {
 
   .attrib {
     right: min(430px, 56vw);
+  }
+
+  .rail {
+    right: min(430px, 56vw);
+  }
+
+  .chrome:has(.inspector:not([hidden])) .rail,
+  .chrome:has(.inspector:not([hidden])[data-sheet='peek']) .rail {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    pointer-events: auto;
+  }
+
+  .chrome:has(.inspector:not([hidden])) .attrib {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 62px);
   }
 
   .search {

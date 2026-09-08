@@ -104,7 +104,7 @@ export class Ui {
       button.className = 'mode';
       button.setAttribute('aria-pressed', 'true');
       button.style.setProperty('--c', MODE_SWATCH[mode]);
-      button.innerHTML = `<span class="mode__swatch"></span><span>${MODE_LABEL[mode]}</span><span class="mode__count">–</span>`;
+      button.innerHTML = `<span class="mode__swatch"></span><span class="mode__name"><span class="mode__long">${MODE_LABEL[mode]}</span><span class="mode__short">${MODE_SHORT[mode]}</span></span><span class="mode__count">–</span>`;
       button.addEventListener('click', () => this.callbacks.onToggleMode(mode));
       rail.appendChild(button);
       this.modeButtons.set(mode, button);
@@ -140,7 +140,9 @@ export class Ui {
     locate.type = 'button';
     locate.className = 'rail__action';
     locate.dataset.state = 'idle';
-    locate.innerHTML = `${CROSSHAIR}<span>min posisjon</span>`;
+    locate.title = 'Min posisjon';
+    locate.setAttribute('aria-label', 'Min posisjon');
+    locate.innerHTML = `${CROSSHAIR}<span class="rail__action-label">min posisjon</span>`;
     locate.addEventListener('click', () => this.callbacks.onLocate());
     rail.appendChild(locate);
     this.locateButton = locate;

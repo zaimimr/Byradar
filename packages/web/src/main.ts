@@ -45,7 +45,9 @@ const SITUATION_REFRESH_MS = 180_000;
 const STOP_FLY_ZOOM = 15.4;
 const FOLLOW_ZOOM = 15.2;
 const FOLLOW_VIEWPORT_MAX_WAIT_MS = 1500;
-const PICKING_RADIUS = 5;
+const COARSE_POINTER = window.matchMedia('(pointer: coarse)').matches;
+const VEHICLE_PICK_RADIUS = COARSE_POINTER ? 10 : 5;
+const STOP_PICK_RADIUS = COARSE_POINTER ? 14 : 5;
 const VEHICLE_LAYER_IDS = ['vehicle-hull', 'vehicle-bubble'];
 
 const DATA = DATA_URL;
@@ -226,7 +228,7 @@ ui.syncState(state);
 ui.setConnection('connecting');
 
 const map: MapLibreMap = createMap(document.getElementById('map')!, state.view);
-const overlay = new MapboxOverlay({ interleaved: false, layers: [], pickingRadius: PICKING_RADIUS });
+const overlay = new MapboxOverlay({ interleaved: false, layers: [], pickingRadius: VEHICLE_PICK_RADIUS });
 
 map.on('load', () => {
   map.addControl(overlay);
@@ -503,12 +505,12 @@ function redraw(): void {
 }
 
 function pickVehicle(x: number, y: number): Vehicle | null {
-  const info = overlay.pickObject({ x, y, radius: PICKING_RADIUS, layerIds: VEHICLE_LAYER_IDS });
+  const info = overlay.pickObject({ x, y, radius: VEHICLE_PICK_RADIUS, layerIds: VEHICLE_LAYER_IDS });
   return (info?.object as Vehicle | undefined) ?? null;
 }
 
 function pickStopGroup(x: number, y: number): StopGroup | null {
-  const info = overlay.pickObject({ x, y, radius: PICKING_RADIUS, layerIds: ['stops'] });
+  const info = overlay.pickObject({ x, y, radius: STOP_PICK_RADIUS, layerIds: ['stops'] });
   const stop = info?.object as StopPlace | undefined;
   if (!stop) return null;
   return searchIndex?.groupByStopId.get(stop.id) ?? null;
