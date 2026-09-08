@@ -1700,3 +1700,109 @@ body {
 .attrib__om:hover {
   color: var(--text);
 }
+
+.alerts {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--hair);
+}
+
+.alerts__toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  padding: 7px 9px;
+  border-left: 2px solid var(--late);
+  border-radius: 0 var(--r) var(--r) 0;
+  background: color-mix(in oklab, var(--late) 10%, var(--slab-raised));
+}
+
+.alerts__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.alerts__count {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--late);
+}
+
+.alerts__peek {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alerts[open] .alerts__peek {
+  display: none;
+}
+
+.alerts[open] .alerts__toggle {
+  background: none;
+  border-left-color: transparent;
+  padding-left: 0;
+}
+
+.alert-list {
+  list-style: none;
+  margin: 9px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alert {
+  padding: 8px 10px;
+  border-left: 2px solid var(--late);
+  border-radius: 0 var(--r) var(--r) 0;
+  background: color-mix(in oklab, var(--late) 9%, var(--slab-raised));
+}
+
+.alert__summary {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.alert__body {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.alert__link {
+  display: inline-block;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--late);
+}
+
+.alert__more {
+  margin: 7px 0 0;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.near__alert {
+  margin-left: 6px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--late) 20%, transparent);
+  color: var(--late);
+}

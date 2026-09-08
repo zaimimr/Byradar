@@ -12,6 +12,7 @@ import { buildSearchIndex } from './search.js';
 import type { SearchIndex, StopGroup } from './search.js';
 import { nearestGroups } from './nearby.js';
 import type { NearbyStop } from './nearby.js';
+import { loadSituations } from './situations.js';
 import { buildVehicleSprites } from './sprites.js';
 import { createState, hashHasView, readHashLineId, readHashStopId, syncHash } from './state.js';
 import type { LineFilter } from './state.js';
@@ -38,6 +39,7 @@ const NEARBY_LIMIT = 4;
 const NEARBY_MEMBER_FETCH = 2;
 const NEARBY_DEPARTURE_LIMIT = 3;
 const NEARBY_REFRESH_MS = 60_000;
+const SITUATION_REFRESH_MS = 180_000;
 const STOP_FLY_ZOOM = 15.4;
 const FOLLOW_ZOOM = 15.2;
 const FOLLOW_VIEWPORT_MAX_WAIT_MS = 1500;
@@ -295,6 +297,13 @@ async function loadStatic(): Promise<void> {
   ui.setSearchIndex(searchIndex);
   restoreLineFilter();
   restoreStop();
+  void trackSituations();
+}
+
+async function trackSituations(): Promise<void> {
+  const index = await loadSituations(API);
+  if (index) ui.setSituations(index);
+  window.setTimeout(() => void trackSituations(), SITUATION_REFRESH_MS);
 }
 
 function restoreStop(): void {

@@ -62,6 +62,11 @@ export const ENV = {
   rateLimitWindowMs: int('RATE_LIMIT_WINDOW_MS', 60_000),
   apiRateLimitMax: int('API_RATE_LIMIT_MAX', 90),
   remoteBoards: bool('REMOTE_BOARDS', true),
+  situationPollMs: int('SITUATION_POLL_MS', 180_000),
+  situationCodespaces: (process.env.SITUATION_CODESPACES ?? 'RUT,VYG,FLT,OST,NBU')
+    .split(',')
+    .map((entry) => entry.trim().toUpperCase())
+    .filter(Boolean),
   maxSocketsPerIp: int('MAX_SOCKETS_PER_IP', 20),
   adminToken: process.env.ADMIN_TOKEN ?? '',
 } as const;

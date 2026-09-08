@@ -12,9 +12,11 @@ import {
 import { formatDistance } from './nearby.js';
 import type { NearbyStop } from './nearby.js';
 import { flatten, search } from './search.js';
+import { EMPTY_SITUATION_INDEX, situationsFor } from './situations.js';
+import type { SituationIndex } from './situations.js';
 import type { LineHit, SearchHit, SearchIndex, StopGroup, StopHit } from './search.js';
 import type { AppState, FollowState, LineFilter } from './state.js';
-import type { DataMeta, Departure, Mode, TimetableCoverage, Vehicle, VehicleDetail } from './types.js';
+import type { DataMeta, Departure, Mode, Situation, TimetableCoverage, Vehicle, VehicleDetail } from './types.js';
 
 const OSLO_CLOCK = new Intl.DateTimeFormat('nb-NO', {
   timeZone: 'Europe/Oslo',
@@ -25,6 +27,10 @@ const OSLO_CLOCK = new Intl.DateTimeFormat('nb-NO', {
 });
 
 const PULSE_SAMPLES = 56;
+const MAX_ALERTS_SHOWN = 6;
+const ALERT_BODY_CHARS = 260;
+const ALERT_PEEK_CHARS = 64;
+const DAY_MS = 86_400_000;
 const FLASH_MS = 6000;
 const CROSSHAIR = `<svg class="rail__glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" stroke="none" /><circle cx="8" cy="8" r="5.6" fill="none" /><path d="M8 0.4v2.2M8 13.4v2.2M0.4 8h2.2M13.4 8h2.2" fill="none" /></svg>`;
 
@@ -75,6 +81,7 @@ export class Ui {
   private flash: HTMLParagraphElement | null = null;
   private flashTimer: number | undefined;
   private searchIndex: SearchIndex | null = null;
+  private situations: SituationIndex = EMPTY_SITUATION_INDEX;
   private hits: SearchHit[] = [];
   private activeHit = -1;
 
@@ -215,6 +222,18 @@ export class Ui {
 
   setSearchIndex(index: SearchIndex): void {
     this.searchIndex = index;
+  }
+
+  setSituations(index: SituationIndex): void {
+    this.situations = index;
+  }
+
+  private alertsFor(keys: { lines?: Iterable<string>; stopPlaces?: Iterable<string> }): Situation[] {
+    const atStop = new Set(keys.stopPlaces ?? []);
+    return situationsFor(this.situations, keys)
+      .map((situation) => ({ situation, rank: rankAlert(situation, atStop) }))
+      .sort((a, b) => a.rank - b.rank)
+      .map((entry) => entry.situation);
   }
 
   private runSearch(): void {
@@ -529,6 +548,7 @@ export class Ui {
       </div>
       <div class="veh__progress"><i style="--p:${(v.progress * 100).toFixed(1)}%;--c:${v.color}"></i></div>
       <button class="veh__follow" id="follow-toggle" type="button" data-state="idle">følg</button>
+      ${alertsBlock(detail.route ? this.alertsFor({ lines: [detail.route.id] }) : [])}
       ${window.length ? `<p class="calls__title">Neste stopp</p><ul class="calls">${window
         .map((call, i) => {
           const absolute = detail.calls.indexOf(call);
@@ -577,11 +597,16 @@ export class Ui {
     const chips = group.modes
       .map((m) => `<span class="stop__mode" style="--c:${MODE_SWATCH[m]}">${MODE_LABEL[m]}</span>`)
       .join('');
+    const alerts = this.alertsFor({
+      stopPlaces: group.members.map((member) => member.id),
+      lines: state.phase === 'ready' ? lineIdsOf(state.departures) : [],
+    });
 
     body.innerHTML = `
       <div class="veh__mode">Stoppested</div>
       <p class="veh__head">${escapeHtml(group.name)}</p>
       <div class="stop__modes">${chips}</div>
+      ${alertsBlock(alerts)}
       <div class="stop__body">${departuresBody(group, state, this.callbacks.serviceNow())}</div>
     `;
     panel.hidden = false;
@@ -606,14 +631,19 @@ export class Ui {
     const rows = items
       .map((item, at) => {
         const state = boards.get(item.group.key) ?? { phase: 'loading' as const };
+        const alerts = this.alertsFor({
+          stopPlaces: item.group.members.map((member) => member.id),
+          lines: state.phase === 'ready' ? lineIdsOf(state.departures) : [],
+        });
         const modes = item.group.modes.map((m) => MODE_SHORT[m]).join('·');
+        const alertMark = alerts.length ? '<span class="near__alert">avvik</span>' : '';
         return `<li>
           <button class="near" type="button" data-at="${at}">
             <span class="near__head">
               <span class="near__name">${escapeHtml(item.group.name)}</span>
               <span class="near__walk">${item.walkMin} min gange · ${formatDistance(item.metres)}</span>
             </span>
-            <span class="near__modes">${escapeHtml(modes)}</span>
+            <span class="near__modes">${escapeHtml(modes)}${alertMark}</span>
             ${nearbyDepartures(state, now)}
           </button>
         </li>`;
@@ -706,6 +736,65 @@ function departuresBody(group: StopGroup, state: DeparturesState, now: number): 
     .join('');
 
   return `<p class="calls__title">Neste avganger</p><ul class="deps">${rows}</ul>${note}`;
+}
+
+function lineIdsOf(departures: Departure[]): string[] {
+  const ids = new Set<string>();
+  for (const dep of departures) {
+    if (dep.lineId) ids.add(dep.lineId);
+  }
+  return [...ids];
+}
+
+function clip(value: string, chars: number): string {
+  if (value.length <= chars) return value;
+  return `${value.slice(0, chars).trimEnd()}…`;
+}
+
+function rankAlert(alert: Situation, atStop: ReadonlySet<string>): number {
+  const hitsStop = alert.stopPlaces.some((id) => atStop.has(id));
+  const days = alert.from !== null && alert.to !== null ? (alert.to - alert.from) / DAY_MS : 365;
+  const kind = alert.reportType === 'incident' ? 0 : 1;
+  return (hitsStop ? 0 : 1000) + kind * 400 + Math.min(365, Math.round(days));
+}
+
+function alertsBlock(alerts: Situation[]): string {
+  if (!alerts.length) return '';
+  const shown = alerts.slice(0, MAX_ALERTS_SHOWN);
+  const rest = alerts.length - shown.length;
+  const items = shown
+    .map((alert) => {
+      const body = clip(alert.description || alert.advice, ALERT_BODY_CHARS);
+      const link = safeUrl(alert.url)
+        ? `<a class="alert__link" href="${escapeHtml(alert.url!)}" target="_blank" rel="noreferrer noopener">mer info</a>`
+        : '';
+      return `<li class="alert">
+        <p class="alert__summary">${escapeHtml(alert.summary || 'Avvik')}</p>
+        ${body ? `<p class="alert__body">${escapeHtml(body)}</p>` : ''}
+        ${link}
+      </li>`;
+    })
+    .join('');
+  const more = rest > 0 ? `<p class="alert__more">+${rest} flere avvik</p>` : '';
+  const label = alerts.length === 1 ? '1 avvik' : `${alerts.length} avvik`;
+  const peek = clip(alerts[0]!.summary || 'Avvik', ALERT_PEEK_CHARS);
+  return `<details class="alerts">
+    <summary class="alerts__toggle">
+      <span class="alerts__count">${label}</span>
+      <span class="alerts__peek">${escapeHtml(peek)}</span>
+    </summary>
+    <ul class="alert-list">${items}</ul>${more}
+  </details>`;
+}
+
+function safeUrl(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 function nearbyDepartures(state: DeparturesState, now: number): string {

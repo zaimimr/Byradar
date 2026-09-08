@@ -15,6 +15,7 @@ import { Engine, type VehicleState } from './engine.js';
 import { startGpsPoller } from './entur.js';
 import { ENV, REPO_ROOT } from './env.js';
 import { isSkipped, startTripUpdatePoller } from './rt.js';
+import { EMPTY_SITUATIONS, startSituationPoller, type SituationSnapshot } from './situations.js';
 import { Store } from './store.js';
 import { secondsIntoServiceDay } from './time.js';
 import { encodeAdded, encodePositions } from './wire.js';
@@ -24,6 +25,26 @@ const destinations = new DestinationResolver(store.journeyHeadsigns);
 const engine = new Engine(store, destinations);
 const departureIndex = DepartureIndex.build(store);
 const remoteBoards = new RemoteBoards(store.meta.serviceDate);
+const routeIds = new Set(store.routes.map((route) => route.id));
+let situations: SituationSnapshot = EMPTY_SITUATIONS;
+let situationErrors = 0;
+
+const stopSituations = startSituationPoller({
+  codespaces: ENV.situationCodespaces,
+  intervalMs: ENV.situationPollMs,
+  scope: {
+    knownLine: (id) => routeIds.has(id),
+    knownStopPlace: (id) => store.stopPlaceIdxById.has(id),
+  },
+  onSnapshot: (snapshot) => {
+    situations = snapshot;
+    app.log.info({ situations: snapshot.situations.length }, 'situations');
+  },
+  onError: (err) => {
+    situationErrors++;
+    app.log.warn({ err: String(err) }, 'situations failed');
+  },
+});
 
 const DATA_CACHE_CONTROL = 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
 const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
@@ -46,7 +67,7 @@ await app.register(rateLimit, {
   allowList: (req) => req.url === '/health' && isAdmin(req),
 });
 
-const GUARDED_PREFIXES = ['/data/', '/stops/', '/vehicles/'];
+const GUARDED_PREFIXES = ['/data/', '/stops/', '/vehicles/', '/situations'];
 
 app.addHook('onRequest', async (req, reply) => {
   if (!GUARDED_PREFIXES.some((prefix) => req.url.startsWith(prefix))) return;
@@ -216,6 +237,11 @@ app.get('/health', async (req) => {
     gps: engine.gpsInfo,
     destinations: destinations.stats,
     remoteBoards: remoteBoards.stats,
+    situations: {
+      count: situations.situations.length,
+      updatedAt: situations.updatedAt,
+      errors: situationErrors,
+    },
     correctionsAbsorbed: engine.correctionsAbsorbed,
     clients: clients.size,
     vehicles: engine.snapshot().length,
@@ -266,6 +292,13 @@ app.get<{ Params: { stopPlaceId: string }; Querystring: { limit?: string } }>(
   },
 );
 
+app.get('/situations', {
+  config: { rateLimit: { max: ENV.apiRateLimitMax, timeWindow: ENV.rateLimitWindowMs } },
+}, async (_req, reply) => {
+  reply.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=240');
+  return situations;
+});
+
 app.get('/live', {
   websocket: true,
   onRequest: async (req, reply) => {
@@ -315,6 +348,7 @@ const shutdown = async (): Promise<void> => {
   clearInterval(ticker);
   stopRt();
   stopGps();
+  stopSituations();
   await app.close();
   process.exit(0);
 };

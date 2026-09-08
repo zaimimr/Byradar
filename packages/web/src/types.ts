@@ -73,6 +73,7 @@ export interface TripCall {
 export interface Departure {
   vid: number | null;
   line: string;
+  lineId?: string;
   mode: Mode;
   color: string;
   headsign: string;
@@ -113,4 +114,18 @@ export interface VehicleDetail {
   };
   route?: RouteMeta;
   calls: TripCall[];
+}
+
+export interface Situation {
+  id: string;
+  severity: string;
+  reportType: string;
+  summary: string;
+  description: string;
+  advice: string;
+  url: string | null;
+  lines: string[];
+  stopPlaces: string[];
+  from: number | null;
+  to: number | null;
 }

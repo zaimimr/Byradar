@@ -128,6 +128,7 @@ const OVERSCAN_FACTOR = 3;
 export interface DepartureRow {
   vid: number | null;
   line: string;
+  lineId: string;
   mode: string;
   color: string;
   headsign: string;
@@ -182,6 +183,7 @@ export function buildDepartureBoard(
     rows.push({
       vid: vehicle?.vid ?? null,
       line: route.line,
+      lineId: route.id,
       mode: route.mode,
       color: route.color,
       headsign: trip.h,

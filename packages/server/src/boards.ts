@@ -27,7 +27,7 @@ const QUERY = `query Board($id: String!, $n: Int!, $range: Int!, $modes: [Transp
       quay { name publicCode }
       destinationDisplay { frontText }
       serviceJourney {
-        line { publicCode name transportMode presentation { colour } }
+        line { id publicCode name transportMode presentation { colour } }
       }
     }
   }
@@ -42,6 +42,7 @@ interface RawCall {
   destinationDisplay: { frontText: string | null } | null;
   serviceJourney: {
     line: {
+      id: string | null;
       publicCode: string | null;
       name: string | null;
       transportMode: string | null;
@@ -243,6 +244,7 @@ export class RemoteBoards {
       rows.push({
         vid: null,
         line: line?.publicCode?.trim() || line?.name?.trim() || '',
+        lineId: line?.id ?? '',
         mode,
         color: colorOf(line?.presentation?.colour ?? null, mode),
         headsign: call.destinationDisplay?.frontText?.trim() ?? '',
