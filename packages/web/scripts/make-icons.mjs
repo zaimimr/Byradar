@@ -119,6 +119,49 @@ function render(size, { inset, rounded }) {
   return encodePng(size, pixels);
 }
 
+function encodeIco(images) {
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(images.length, 4);
+
+  let offset = 6 + images.length * 16;
+  const entries = [];
+  for (const { size, png } of images) {
+    const entry = Buffer.alloc(16);
+    entry[0] = size >= 256 ? 0 : size;
+    entry[1] = size >= 256 ? 0 : size;
+    entry.writeUInt16LE(1, 4);
+    entry.writeUInt16LE(32, 6);
+    entry.writeUInt32LE(png.length, 8);
+    entry.writeUInt32LE(offset, 12);
+    entries.push(entry);
+    offset += png.length;
+  }
+
+  return Buffer.concat([header, ...entries, ...images.map((i) => i.png)]);
+}
+
+function renderSvg() {
+  const plate = 64;
+  const pad = plate * 0.2;
+  const field = plate - pad * 2;
+  const slot = field / (BARS.length * 2 - 1);
+  const bars = BARS.map((color, i) => {
+    const height = field * HEIGHTS[i];
+    const x = (pad + i * slot * 2).toFixed(2);
+    const y = (plate - pad - height).toFixed(2);
+    return `  <rect x="${x}" y="${y}" width="${slot.toFixed(2)}" height="${height.toFixed(2)}" rx="${(slot * 0.22).toFixed(2)}" fill="${color}" />`;
+  });
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${plate} ${plate}">`,
+    `  <rect width="${plate}" height="${plate}" rx="${(plate * 0.18).toFixed(2)}" fill="#07090c" />`,
+    ...bars,
+    '</svg>',
+    '',
+  ].join('\n');
+}
+
 const targets = [
   ['icon-192.png', 192, { inset: 0.04, rounded: true }],
   ['icon-512.png', 512, { inset: 0.04, rounded: true }],
@@ -130,3 +173,11 @@ for (const [name, size, opts] of targets) {
   writeFileSync(resolve(PUBLIC_DIR, name), render(size, opts));
   console.log(`wrote ${name} (${size}px)`);
 }
+
+const ICO_SIZES = [16, 32, 48];
+const ico = encodeIco(ICO_SIZES.map((size) => ({ size, png: render(size, { inset: 0, rounded: false }) })));
+writeFileSync(resolve(PUBLIC_DIR, 'favicon.ico'), ico);
+console.log(`wrote favicon.ico (${ICO_SIZES.join(', ')}px)`);
+
+writeFileSync(resolve(PUBLIC_DIR, 'favicon.svg'), renderSvg());
+console.log('wrote favicon.svg');

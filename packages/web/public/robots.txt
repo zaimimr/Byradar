@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /data/
+Disallow: /stops/
+Disallow: /vehicles/
+Disallow: /health
+
+Sitemap: https://byradar.no/sitemap.xml

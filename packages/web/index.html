@@ -1,17 +1,65 @@
 <!doctype html>
-<html lang="no">
+<html lang="nb">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Byradar · sanntid</title>
-    <meta name="description" content="Live kart over kollektivtrafikken i Oslo: T-bane, trikk, buss, båt og tog." />
+    <title>Byradar · sanntidskart for kollektivtrafikken i Oslo</title>
+    <meta
+      name="description"
+      content="Se T-bane, trikk, buss, båt og tog bevege seg i Oslo i sanntid. Følg en avgang, søk opp en linje, og se når det går fra stoppet nærmest deg."
+    />
+    <link rel="canonical" href="https://byradar.no/" />
     <meta name="theme-color" content="#07090c" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Byradar" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Byradar" />
+    <meta property="og:locale" content="nb_NO" />
+    <meta property="og:url" content="https://byradar.no/" />
+    <meta property="og:title" content="Byradar · sanntidskart for kollektivtrafikken i Oslo" />
+    <meta
+      property="og:description"
+      content="Se T-bane, trikk, buss, båt og tog bevege seg i Oslo i sanntid."
+    />
+    <meta property="og:image" content="https://byradar.no/og.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Mørkt kart over Oslo med farget kollektivnett og hundrevis av kjøretøy i bevegelse."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Byradar · sanntidskart for kollektivtrafikken i Oslo" />
+    <meta
+      name="twitter:description"
+      content="Se T-bane, trikk, buss, båt og tog bevege seg i Oslo i sanntid."
+    />
+    <meta name="twitter:image" content="https://byradar.no/og.jpg" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Byradar",
+        "url": "https://byradar.no/",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "nb-NO",
+        "description": "Sanntidskart over kollektivtrafikken i Oslo: T-bane, trikk, buss, båt og tog.",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "NOK" },
+        "author": { "@type": "Person", "name": "Zaim Imran", "url": "https://zaim.no" },
+        "areaServed": { "@type": "City", "name": "Oslo" }
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -113,6 +161,17 @@
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer noopener">© OpenStreetMap</a>
       </div>
     </main>
+
+    <noscript>
+      <div class="noscript">
+        <h2>Byradar trenger JavaScript</h2>
+        <p>
+          Byradar er et sanntidskart over kollektivtrafikken i Oslo. Det tegner T-bane, trikk, buss, båt og tog mens
+          de kjører, med avgangstider fra stoppene rundt deg. Kartet krever JavaScript for å tegne seg.
+        </p>
+        <p><a href="/om">Les om hvor dataene kommer fra og hvor nøyaktige de er</a>.</p>
+      </div>
+    </noscript>
 
     <div class="boot" id="boot">
       <div class="boot__inner">

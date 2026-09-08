@@ -1806,3 +1806,36 @@ body {
   background: color-mix(in oklab, var(--late) 20%, transparent);
   color: var(--late);
 }
+
+.noscript {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 24px;
+  background: var(--ink);
+  color: var(--text-dim);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+.noscript h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.noscript p {
+  margin: 0;
+}
+
+.noscript a {
+  color: var(--text);
+}
