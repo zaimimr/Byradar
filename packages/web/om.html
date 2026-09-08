@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="no" class="doc-page">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Om Byradar</title>
+    <meta
+      name="description"
+      content="Hvor Byradar henter data fra, hvor nøyaktige posisjonene er, og hvem som har laget kartet."
+    />
+    <meta name="theme-color" content="#07090c" />
+    <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..700&family=Martian+Mono:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <svg class="grain" aria-hidden="true">
+      <filter id="grain-filter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.86" numOctaves="3" stitchTiles="stitch" />
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#grain-filter)" />
+    </svg>
+
+    <main class="doc">
+      <header class="doc__head">
+        <a class="doc__back" href="/">tilbake til kartet</a>
+        <div class="doc__mark" aria-hidden="true">
+          <span class="masthead__bar" style="--c: #ec700c"></span>
+          <span class="masthead__bar" style="--c: #0b91ef"></span>
+          <span class="masthead__bar" style="--c: #e60000"></span>
+          <span class="masthead__bar" style="--c: #354f7f"></span>
+        </div>
+        <h1 class="doc__title">Om Byradar</h1>
+        <p class="doc__lede">
+          Byradar viser kollektivtrafikken i Oslo-området mens den kjører: T-bane, trikk, buss, båt og tog på ett
+          kart. Det er et hobbyprosjekt, ikke en offisiell tjeneste fra Ruter, Entur eller noe annet selskap.
+        </p>
+      </header>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Hvor dataene kommer fra</h2>
+        <p>
+          Alt kommer fra åpne data hos <a href="https://developer.entur.org" rel="noreferrer noopener">Entur</a>, som
+          samler rutedata og sanntid for hele Norge. Byradar henter ingenting fra lukkede API-er.
+        </p>
+        <dl class="srcs">
+          <div class="src">
+            <dt>Rutetabeller</dt>
+            <dd>
+              Enturs nasjonale GTFS-eksport, med Ruter, Vy, Flytoget og de andre operatørene i området. Byradar bygger
+              om hele rutenettet hver natt klokka 04:45.
+            </dd>
+          </div>
+          <div class="src">
+            <dt>Sanntid</dt>
+            <dd>
+              Forsinkelser og innstillinger fra Enturs sanntidsfeed (GTFS-RT), hentet hvert minutt. Det er dette som
+              gjør at et kjøretøy blir gult eller rødt.
+            </dd>
+          </div>
+          <div class="src">
+            <dt>GPS</dt>
+            <dd>
+              Faktiske kjøretøyposisjoner fra Enturs sanntids-API, hentet hvert åttende sekund. Bare noen operatører
+              deler posisjon.
+            </dd>
+          </div>
+          <div class="src">
+            <dt>Avganger</dt>
+            <dd>Avgangstavlene på stoppene kommer fra Enturs reiseplanlegger, som også fyller inn togavgangene.</dd>
+          </div>
+          <div class="src">
+            <dt>Kartet</dt>
+            <dd>
+              Bakgrunnskartet er <a href="https://www.maptiler.com/copyright/" rel="noreferrer noopener">MapTiler</a>
+              med kartdata fra
+              <a href="https://www.openstreetmap.org/copyright" rel="noreferrer noopener">OpenStreetMap</a>.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Hvor nøyaktig er dette?</h2>
+        <p class="doc__warn">
+          Kort svar: ikke nøyaktig nok til å rekke siste buss. De fleste prikkene på kartet er beregnede posisjoner,
+          ikke målte.
+        </p>
+        <p>Hvert kjøretøy er merket med hvor posisjonen kommer fra:</p>
+        <ul class="doc__prov">
+          <li>
+            <span class="prov prov--gps">GPS</span>
+            <span>
+              Kjøretøyet melder inn sin egen posisjon. Meldingen kan være noen sekunder gammel, og bevegelsen mellom
+              to meldinger glattes ut slik at prikken ikke hopper. Nærmest sannheten du kommer her.
+            </span>
+          </li>
+          <li>
+            <span class="prov prov--est">EST</span>
+            <span>
+              Posisjonen er regnet ut. Byradar tar rutetabellen, legger på forsinkelsen sanntidsdataene melder, og
+              plasserer kjøretøyet der det da burde ha vært langs traseen. Står bussen i en kø ingen har rapportert,
+              ruller prikken videre som om alt går etter planen.
+            </span>
+          </li>
+        </ul>
+        <p>Noen andre ting det er verdt å vite:</p>
+        <ul class="doc__list">
+          <li>Det meste av buss, trikk og T-bane i Oslo deler ikke posisjon offentlig. De vises som EST.</li>
+          <li>Traseene er forenklede linjer. Et kjøretøy følger streken på kartet, ikke kjørefeltet i veien.</li>
+          <li>Innstilte avganger, omkjøringer og ekstrabusser kan mangle, eller dukke opp sent.</li>
+          <li>Ved feil i datagrunnlaget kan et kjøretøy stå stille, hoppe, eller kjøre en trasé det ikke kjører.</li>
+          <li>Kartet dekker Oslo og områdene rundt. Linjer som går lenger ut, klippes ved kanten.</li>
+        </ul>
+        <p>
+          Skal du faktisk rekke noe, bruk <a href="https://ruter.no" rel="noreferrer noopener">Ruter</a> eller
+          <a href="https://entur.no" rel="noreferrer noopener">Entur</a>. Det er fasit.
+        </p>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Personvern</h2>
+        <ul class="doc__list">
+          <li>Ingen sporing, ingen analyseverktøy, ingen informasjonskapsler.</li>
+          <li>
+            Trykker du på min posisjon, blir posisjonen liggende i nettleseren. Den brukes til å finne nærmeste stopp
+            og sendes aldri til serveren.
+          </li>
+          <li>
+            Serveren får vite hvilket kartutsnitt du ser på, slik at den bare sender kjøretøy du har på skjermen.
+            Utover vanlig driftslogg lagres det ingenting om deg.
+          </li>
+        </ul>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Laget av</h2>
+        <p>
+          Zaim Imran. Mer om meg og andre prosjekter på
+          <a class="doc__strong" href="https://zaim.no" rel="noreferrer noopener">zaim.no</a>.
+        </p>
+        <p>
+          Koden er åpen og ligger på
+          <a href="https://github.com/zaimimr/byradar" rel="noreferrer noopener">github.com/zaimimr/byradar</a>. Har du
+          funnet noe rart på kartet, si fra der.
+        </p>
+      </section>
+
+      <footer class="doc__foot">
+        <a href="/">← kartet</a>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -3,7 +3,7 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import type { WebSocket } from 'ws';
 
@@ -63,6 +63,17 @@ await app.register(fastifyStatic, {
 
 const WEB_DIST = resolve(REPO_ROOT, 'packages', 'web', 'dist');
 const serveWeb = existsSync(resolve(WEB_DIST, 'index.html'));
+const WEB_PAGES = serveWeb
+  ? new Set(readdirSync(WEB_DIST).filter((name) => name.endsWith('.html')))
+  : new Set<string>();
+
+function pageFor(url: string): string {
+  const slug = (url.split('?')[0] ?? '').replace(/^\/+|\/+$/g, '');
+  if (!/^[a-z0-9-]+$/.test(slug)) return 'index.html';
+  const page = `${slug}.html`;
+  return WEB_PAGES.has(page) ? page : 'index.html';
+}
+
 if (serveWeb) {
   await app.register(fastifyStatic, {
     root: WEB_DIST,
@@ -296,7 +307,7 @@ if (serveWeb) {
     if (req.method !== 'GET' || !wantsHtml || req.url.startsWith('/data/')) {
       return reply.code(404).send({ error: 'not found' });
     }
-    return reply.sendFile('index.html', WEB_DIST);
+    return reply.sendFile(pageFor(req.url), WEB_DIST);
   });
 }
 

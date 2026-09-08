@@ -1,4 +1,4 @@
-const VERSION = 'byradar-v1';
+const VERSION = 'byradar-v2';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
@@ -23,14 +23,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-async function networkFirst(request, cacheName, fallbackUrl) {
+async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request);
-    if (response.ok) cache.put(fallbackUrl ?? request, response.clone());
+    if (response.ok) cache.put(request, response.clone());
     return response;
   } catch (err) {
-    const cached = await cache.match(fallbackUrl ?? request);
+    const cached = await cache.match(request);
     if (cached) return cached;
     throw err;
   }
@@ -45,6 +45,19 @@ async function cacheFirst(request, cacheName) {
   return response;
 }
 
+async function navigate(request) {
+  const cache = await caches.open(SHELL);
+  try {
+    const response = await fetch(request);
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  } catch (err) {
+    const cached = (await cache.match(request)) ?? (await cache.match('/'));
+    if (cached) return cached;
+    throw err;
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
@@ -55,7 +68,7 @@ self.addEventListener('fetch', (event) => {
   if (sameOrigin && BYPASS.some((prefix) => url.pathname.startsWith(prefix))) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request, SHELL, '/'));
+    event.respondWith(navigate(request));
     return;
   }
 
