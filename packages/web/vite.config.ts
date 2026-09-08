@@ -15,6 +15,6 @@ export default defineConfig(({ mode }) => {
       __API_URL__: JSON.stringify(env.VITE_API_URL ?? 'http://localhost:8787'),
       __WS_URL__: JSON.stringify(env.VITE_WS_URL ?? 'ws://localhost:8787/live'),
     },
-    build: { target: 'es2022', sourcemap: true },
+    build: { target: 'es2022', sourcemap: mode !== 'production' },
   };
 });

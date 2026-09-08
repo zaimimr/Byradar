@@ -5,6 +5,15 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
 
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
 	@websocket header Connection *Upgrade*
 	reverse_proxy @websocket server:8787
 
