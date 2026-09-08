@@ -14,7 +14,7 @@ import { DestinationResolver } from './destinations.js';
 import { Engine, type VehicleState } from './engine.js';
 import { startGpsPoller } from './entur.js';
 import { ENV, REPO_ROOT } from './env.js';
-import { startTripUpdatePoller } from './rt.js';
+import { isSkipped, startTripUpdatePoller } from './rt.js';
 import { Store } from './store.js';
 import { secondsIntoServiceDay } from './time.js';
 import { encodeAdded, encodePositions } from './wire.js';
@@ -219,14 +219,17 @@ app.get<{ Params: { vid: string } }>('/vehicles/:vid', {
   const trip = vehicle.tripId ? store.tripById.get(vehicle.tripId) : undefined;
   if (trip === undefined) return { vehicle, calls: [] };
   const meta = store.trips[trip]!;
+  const series = engine.seriesForTrip(meta.id);
   const calls = [];
   for (let k = 0; k < meta.n; k++) {
+    const seq = store.call(trip, k, 0);
     calls.push({
-      seq: store.call(trip, k, 0),
+      seq,
       arrival: store.call(trip, k, 1),
       departure: store.call(trip, k, 2),
       distance: store.call(trip, k, 3),
       name: store.quayName(store.call(trip, k, 4)),
+      skipped: series != null && isSkipped(series, seq),
     });
   }
   return { vehicle, route: store.routes[meta.r], calls };
@@ -247,11 +250,8 @@ app.get<{ Params: { stopPlaceId: string }; Querystring: { limit?: string } }>(
       : DEFAULT_DEPARTURE_LIMIT;
     const nowSec = secondsIntoServiceDay(store.meta.serviceDate);
     const board = buildDepartureBoard(store, engine, departureIndex, place, nowSec, limit);
-    const missing = board.stop.missingModes;
-    if (!missing.length) return board;
-
-    const remote = await remoteBoards.board(req.params.stopPlaceId, missing, nowSec);
-    return withRemoteDepartures(board, remote, missing, limit);
+    const remote = await remoteBoards.board(req.params.stopPlaceId, board.stop.modes, nowSec);
+    return withRemoteDepartures(board, remote, board.stop.missingModes, limit);
   },
 );
 

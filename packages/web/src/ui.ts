@@ -533,18 +533,25 @@ export class Ui {
         .map((call, i) => {
           const absolute = detail.calls.indexOf(call);
           const isNext = absolute === nextIdx;
-          const cls = absolute < nextIdx ? 'call--passed' : isNext ? 'call--next' : '';
+          const skipped = call.skipped === true;
+          const cls = [
+            absolute < nextIdx ? 'call--passed' : isNext ? 'call--next' : '',
+            skipped ? 'call--skipped' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
           const aimed = formatServiceTime(call.arrival);
           const expectedSec = call.arrival + v.delay;
           const expected = formatServiceTime(expectedSec);
           const shifted = Math.abs(v.delay) >= 60;
-          const count = isNext
+          const count = isNext && !skipped
             ? `<span class="call__count" ${countAttrs(expectedSec, expected)}>${countdownText(expectedSec, nowSec, expected)}</span>`
             : '';
+          const time = skipped ? `<s>${expected}</s> innstilt` : `${shifted ? `<s>${aimed}</s>` : ''}${expected}`;
           return `<li class="call ${cls}" style="--c:${v.color}">
               <span class="call__node"></span>
               <span>${escapeHtml(call.name)}</span>
-              <span class="call__time">${count}${shifted ? `<s>${aimed}</s>` : ''}${expected}</span>
+              <span class="call__time">${count}${time}</span>
             </li>`;
         })
         .join('')}</ul>` : ''}
@@ -680,17 +687,20 @@ function departuresBody(group: StopGroup, state: DeparturesState, now: number): 
       const expected = formatServiceTime(dep.expected);
       const shifted = aimed !== expected;
       const quay = dep.quay && dep.quay !== group.name ? `<p class="dep__quay">${escapeHtml(dep.quay)}</p>` : '';
-      return `<li class="dep ${dep.realtime ? '' : 'dep--sched'}">
+      const classes = dep.cancelled ? 'dep dep--cancelled' : dep.realtime ? 'dep' : 'dep dep--sched';
+      const when = dep.cancelled
+        ? `<span class="dep__count">innstilt</span>
+          <span class="dep__time"><s>${expected}</s></span>`
+        : `<span class="dep__count" ${countAttrs(dep.expected, expected)}>${countdownText(dep.expected, now, expected)}</span>
+          <span class="dep__time">${shifted ? `<s>${aimed}</s>` : ''}${expected}</span>
+          <span class="dep__delay" style="--c:${p.hex}">${dep.realtime ? formatDelay(dep.delay) : 'rutetid'}</span>`;
+      return `<li class="${classes}">
         <span class="badge" style="--c:${dep.color};--tc:${textOn(dep.color)}">${escapeHtml(dep.line || '·')}</span>
         <span>
           <p class="dep__head">${escapeHtml(dep.headsign || 'ukjent destinasjon')}</p>
           ${quay}
         </span>
-        <span class="dep__when">
-          <span class="dep__count" ${countAttrs(dep.expected, expected)}>${countdownText(dep.expected, now, expected)}</span>
-          <span class="dep__time">${shifted ? `<s>${aimed}</s>` : ''}${expected}</span>
-          <span class="dep__delay" style="--c:${p.hex}">${dep.realtime ? formatDelay(dep.delay) : 'rutetid'}</span>
-        </span>
+        <span class="dep__when">${when}</span>
       </li>`;
     })
     .join('');
@@ -707,10 +717,13 @@ function nearbyDepartures(state: DeparturesState, now: number): string {
   const rows = state.departures
     .map((dep) => {
       const clock = formatServiceTime(dep.expected);
-      return `<span class="near__dep">
+      const when = dep.cancelled
+        ? '<span class="near__dep-when near__dep-when--cancelled">innstilt</span>'
+        : `<span class="near__dep-when" ${countAttrs(dep.expected, clock)}>${countdownText(dep.expected, now, clock)}</span>`;
+      return `<span class="near__dep${dep.cancelled ? ' near__dep--cancelled' : ''}">
         <span class="badge" style="--c:${dep.color};--tc:${textOn(dep.color)}">${escapeHtml(dep.line || '·')}</span>
         <span class="near__dep-head">${escapeHtml(dep.headsign || 'ukjent destinasjon')}</span>
-        <span class="near__dep-when" ${countAttrs(dep.expected, clock)}>${countdownText(dep.expected, now, clock)}</span>
+        ${when}
       </span>`;
     })
     .join('');

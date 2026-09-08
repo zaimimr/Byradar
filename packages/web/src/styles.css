@@ -1423,3 +1423,55 @@ body {
 .inspector[data-view='nearby'] {
   max-height: min(700px, 78vh);
 }
+
+.dep--cancelled .dep__head,
+.dep--cancelled .dep__quay {
+  color: var(--text-faint);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--verylate) 70%, transparent);
+}
+
+.dep--cancelled .badge {
+  filter: saturate(0.35);
+  opacity: 0.6;
+}
+
+.dep--cancelled .dep__count {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--verylate);
+}
+
+.dep--cancelled .dep__time {
+  color: var(--text-faint);
+}
+
+.near__dep--cancelled .near__dep-head {
+  text-decoration: line-through;
+  color: var(--text-faint);
+}
+
+.near__dep-when--cancelled {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--verylate);
+}
+
+.call--skipped {
+  color: var(--text-faint);
+}
+
+.call--skipped .call__time {
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--verylate);
+}
+
+.call--skipped .call__node::after {
+  background: var(--ink);
+  border-color: var(--verylate);
+  box-shadow: none;
+}

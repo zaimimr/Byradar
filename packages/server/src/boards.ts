@@ -9,6 +9,7 @@ const TIME_RANGE_SEC = 21_600;
 const MAX_DEPARTURES = 20;
 const BREAKER_FAILURES = 3;
 const BREAKER_PAUSE_MS = 60_000;
+const MAX_CACHE_ENTRIES = 300;
 
 const QUERY = `query Board($id: String!, $n: Int!, $range: Int!, $modes: [TransportMode]) {
   stopPlace(id: $id) {
@@ -17,6 +18,7 @@ const QUERY = `query Board($id: String!, $n: Int!, $range: Int!, $modes: [Transp
       timeRange: $range
       arrivalDeparture: departures
       whiteListedModes: $modes
+      includeCancelledTrips: true
     ) {
       aimedDepartureTime
       expectedDepartureTime
@@ -181,6 +183,7 @@ export class RemoteBoards {
     try {
       const rows = await this.fetchRows(stopPlaceId, transportModes);
       this.cache.set(key, { at: Date.now(), rows });
+      this.prune();
       this.consecutiveFailures = 0;
       return { ok: true, rows };
     } catch {
@@ -191,6 +194,18 @@ export class RemoteBoards {
     } finally {
       this.inflight--;
       this.pending.delete(key);
+    }
+  }
+
+  private prune(): void {
+    if (this.cache.size <= MAX_CACHE_ENTRIES) return;
+    const stale = Date.now() - CACHE_TTL_MS;
+    for (const [key, entry] of this.cache) {
+      if (entry.at < stale) this.cache.delete(key);
+    }
+    for (const key of this.cache.keys()) {
+      if (this.cache.size <= MAX_CACHE_ENTRIES) break;
+      this.cache.delete(key);
     }
   }
 
@@ -213,7 +228,7 @@ export class RemoteBoards {
     const midnight = osloMidnightUtcMs(this.serviceDate);
     const rows: DepartureRow[] = [];
     for (const call of calls) {
-      if (call.cancellation) continue;
+      const cancelled = call.cancellation === true;
       const aimedAt = Date.parse(call.aimedDepartureTime ?? '');
       if (!Number.isFinite(aimedAt)) continue;
       const expectedRaw = call.expectedDepartureTime ? Date.parse(call.expectedDepartureTime) : aimedAt;
@@ -222,7 +237,7 @@ export class RemoteBoards {
       const line = call.serviceJourney?.line;
       const mode = modeOf(line?.transportMode ?? null);
       const aimed = Math.round((aimedAt - midnight) / 1000);
-      const expected = Math.round((expectedAt - midnight) / 1000);
+      const expected = cancelled ? aimed : Math.round((expectedAt - midnight) / 1000);
       const realtime = call.realtime === true;
 
       rows.push({
@@ -237,6 +252,7 @@ export class RemoteBoards {
         delay: expected - aimed,
         source: realtime ? 'rt' : 'sched',
         realtime,
+        cancelled,
       });
     }
     rows.sort((a, b) => a.expected - b.expected);

@@ -137,6 +137,7 @@ export interface DepartureRow {
   delay: number;
   source: VehicleSource;
   realtime: boolean;
+  cancelled: boolean;
 }
 
 export interface DepartureStop extends StopPlaceMeta {
@@ -166,13 +167,11 @@ export function buildDepartureBoard(
     const callIdx = index.callAt(i);
     const trip = store.trips[tripIdx]!;
     const series = engine.seriesForTrip(trip.id);
-    if (series?.cancelled) continue;
-
     const seq = store.call(tripIdx, callIdx, CALL_SEQ);
-    if (series && isSkipped(series, seq)) continue;
+    const cancelled = series != null && (series.cancelled || isSkipped(series, seq));
 
     const aimed = index.aimedAt(i);
-    const delay = series ? delayAtSeq(series, seq, 'dep') : 0;
+    const delay = cancelled || series == null ? 0 : delayAtSeq(series, seq, 'dep');
     const expected = aimed + delay;
     if (expected < nowSec) continue;
 
@@ -192,6 +191,7 @@ export function buildDepartureBoard(
       delay,
       source,
       realtime: source !== 'sched',
+      cancelled,
     });
   }
 
@@ -202,18 +202,34 @@ export function buildDepartureBoard(
   };
 }
 
+function cancellationKey(row: { line: string; aimed: number }): string {
+  return `${row.line}|${row.aimed}`;
+}
+
 export function withRemoteDepartures(
   board: DepartureBoard,
   remote: RemoteBoard,
-  askedModes: readonly string[],
+  fillModes: readonly string[],
   limit: number,
 ): DepartureBoard {
   if (!remote.ok) return board;
 
-  const departures = [...board.departures, ...remote.rows]
-    .sort((a, b) => a.expected - b.expected)
-    .slice(0, limit);
-  const missingModes = board.stop.missingModes.filter((mode) => !askedModes.includes(mode));
+  const fill = new Set(fillModes);
+  const additions: DepartureRow[] = [];
+  const cancelledRemotely = new Set<string>();
+  for (const row of remote.rows) {
+    if (fill.has(row.mode)) additions.push(row);
+    else if (row.cancelled) cancelledRemotely.add(cancellationKey(row));
+  }
+
+  const local = board.departures.map((row) =>
+    row.cancelled || !cancelledRemotely.has(cancellationKey(row))
+      ? row
+      : { ...row, cancelled: true, delay: 0, expected: row.aimed },
+  );
+
+  const departures = [...local, ...additions].sort((a, b) => a.expected - b.expected).slice(0, limit);
+  const missingModes = board.stop.missingModes.filter((mode) => !fill.has(mode));
   const timetable: TimetableCoverage = !missingModes.length
     ? 'full'
     : missingModes.length === board.stop.modes.length

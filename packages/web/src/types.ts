@@ -67,6 +67,7 @@ export interface TripCall {
   departure: number;
   distance: number;
   name: string;
+  skipped?: boolean;
 }
 
 export interface Departure {
@@ -81,6 +82,7 @@ export interface Departure {
   delay: number;
   source: VehicleSource;
   realtime: boolean;
+  cancelled?: boolean;
 }
 
 export type TimetableCoverage = 'full' | 'partial' | 'none';
