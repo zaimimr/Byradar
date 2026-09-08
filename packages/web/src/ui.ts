@@ -91,6 +91,7 @@ export class Ui {
     this.buildPulse();
     this.buildSearch();
     el<HTMLButtonElement>('inspector-close').addEventListener('click', () => this.callbacks.onCloseInspector());
+    el<HTMLButtonElement>('inspector-grip').addEventListener('click', () => this.toggleSheet());
     this.startClock();
   }
 
@@ -222,6 +223,15 @@ export class Ui {
 
   setSearchIndex(index: SearchIndex): void {
     this.searchIndex = index;
+  }
+
+  private toggleSheet(): void {
+    const panel = el<HTMLElement>('inspector');
+    panel.dataset.sheet = panel.dataset.sheet === 'peek' ? 'full' : 'peek';
+  }
+
+  private resetSheet(): void {
+    el<HTMLElement>('inspector').dataset.sheet = 'full';
   }
 
   setSituations(index: SituationIndex): void {
@@ -526,6 +536,7 @@ export class Ui {
   renderInspector(detail: VehicleDetail, nowSec: number): void {
     const panel = el<HTMLElement>('inspector');
     panel.dataset.view = 'vehicle';
+    this.resetSheet();
     const body = el<HTMLElement>('inspector-body');
     const v = detail.vehicle;
     const p = punctuality(v.delay);
@@ -593,6 +604,7 @@ export class Ui {
   renderStop(group: StopGroup, state: DeparturesState): void {
     const panel = el<HTMLElement>('inspector');
     panel.dataset.view = 'stop';
+    if (state.phase === 'loading') this.resetSheet();
     const body = el<HTMLElement>('inspector-body');
     const chips = group.modes
       .map((m) => `<span class="stop__mode" style="--c:${MODE_SWATCH[m]}">${MODE_LABEL[m]}</span>`)
@@ -631,12 +643,9 @@ export class Ui {
     const rows = items
       .map((item, at) => {
         const state = boards.get(item.group.key) ?? { phase: 'loading' as const };
-        const alerts = this.alertsFor({
-          stopPlaces: item.group.members.map((member) => member.id),
-          lines: state.phase === 'ready' ? lineIdsOf(state.departures) : [],
-        });
+        const atStop = this.alertsFor({ stopPlaces: item.group.members.map((member) => member.id) });
         const modes = item.group.modes.map((m) => MODE_SHORT[m]).join('·');
-        const alertMark = alerts.length ? '<span class="near__alert">avvik</span>' : '';
+        const alertMark = atStop.length ? '<span class="near__alert">avvik</span>' : '';
         return `<li>
           <button class="near" type="button" data-at="${at}">
             <span class="near__head">

@@ -38,6 +38,9 @@ export interface AppState {
   fix: Fix | null;
 }
 
+const PHONE_QUERY = '(max-width: 620px)';
+const PHONE_ZOOM = 13.3;
+
 const DEFAULT_VIEW: ViewState = {
   longitude: 10.7522,
   latitude: 59.9139,
@@ -45,6 +48,11 @@ const DEFAULT_VIEW: ViewState = {
   pitch: 0,
   bearing: 0,
 };
+
+function defaultView(): ViewState {
+  const onPhone = typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches;
+  return onPhone ? { ...DEFAULT_VIEW, zoom: PHONE_ZOOM } : { ...DEFAULT_VIEW };
+}
 
 function parseModes(raw: string | undefined): Set<Mode> {
   if (!raw) return new Set(MODE_RAIL_ORDER);
@@ -94,7 +102,7 @@ export function hashHasView(): boolean {
 export function createState(): AppState {
   const fromHash = readHash();
   return {
-    view: fromHash.view ?? { ...DEFAULT_VIEW },
+    view: fromHash.view ?? defaultView(),
     modes: fromHash.modes ?? new Set(MODE_RAIL_ORDER),
     showStops: fromHash.showStops ?? true,
     showNetwork: fromHash.showNetwork ?? true,
