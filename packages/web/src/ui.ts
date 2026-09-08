@@ -4,10 +4,13 @@ import {
   MODE_SHORT,
   MODE_SWATCH,
   PUNCTUALITY,
+  formatCountdown,
   formatDelay,
   formatServiceTime,
   punctuality,
 } from './palette.js';
+import { formatDistance } from './nearby.js';
+import type { NearbyStop } from './nearby.js';
 import { flatten, search } from './search.js';
 import type { LineHit, SearchHit, SearchIndex, StopGroup, StopHit } from './search.js';
 import type { AppState, FollowState, LineFilter } from './state.js';
@@ -37,6 +40,8 @@ export type DeparturesState =
   | { phase: 'failed' }
   | { phase: 'ready'; departures: Departure[]; coverage: Coverage };
 
+export type NearbyBoards = Map<string, DeparturesState>;
+
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`missing element #${id}`);
@@ -55,7 +60,9 @@ export interface UiCallbacks {
   onLocate: () => void;
   onPickLine: (hit: LineHit) => void;
   onPickStop: (hit: StopHit) => void;
+  onPickNearby: (item: NearbyStop) => void;
   onClearLine: () => void;
+  serviceNow: () => number;
 }
 
 export class Ui {
@@ -378,9 +385,20 @@ export class Ui {
     const clock = el<HTMLElement>('clock');
     const paint = () => {
       clock.textContent = OSLO_CLOCK.format(new Date());
+      this.paintCountdowns();
     };
     paint();
     setInterval(paint, 1000);
+  }
+
+  private paintCountdowns(): void {
+    const now = this.callbacks.serviceNow();
+    for (const node of document.querySelectorAll<HTMLElement>('#inspector-body [data-count]')) {
+      const expected = Number(node.dataset.count);
+      if (!Number.isFinite(expected)) continue;
+      node.textContent = countdownText(expected, now, node.dataset.fallback ?? '');
+      node.dataset.soon = expected - now < 90 ? '1' : '0';
+    }
   }
 
   setMeta(meta: DataMeta): void {
@@ -488,6 +506,7 @@ export class Ui {
 
   renderInspector(detail: VehicleDetail, nowSec: number): void {
     const panel = el<HTMLElement>('inspector');
+    panel.dataset.view = 'vehicle';
     const body = el<HTMLElement>('inspector-body');
     const v = detail.vehicle;
     const p = punctuality(v.delay);
@@ -513,14 +532,19 @@ export class Ui {
       ${window.length ? `<p class="calls__title">Neste stopp</p><ul class="calls">${window
         .map((call, i) => {
           const absolute = detail.calls.indexOf(call);
-          const cls = absolute < nextIdx ? 'call--passed' : absolute === nextIdx ? 'call--next' : '';
+          const isNext = absolute === nextIdx;
+          const cls = absolute < nextIdx ? 'call--passed' : isNext ? 'call--next' : '';
           const aimed = formatServiceTime(call.arrival);
-          const expected = formatServiceTime(call.arrival + v.delay);
+          const expectedSec = call.arrival + v.delay;
+          const expected = formatServiceTime(expectedSec);
           const shifted = Math.abs(v.delay) >= 60;
+          const count = isNext
+            ? `<span class="call__count" ${countAttrs(expectedSec, expected)}>${countdownText(expectedSec, nowSec, expected)}</span>`
+            : '';
           return `<li class="call ${cls}" style="--c:${v.color}">
               <span class="call__node"></span>
               <span>${escapeHtml(call.name)}</span>
-              <span class="call__time">${shifted ? `<s>${aimed}</s>` : ''}${expected}</span>
+              <span class="call__time">${count}${shifted ? `<s>${aimed}</s>` : ''}${expected}</span>
             </li>`;
         })
         .join('')}</ul>` : ''}
@@ -541,6 +565,7 @@ export class Ui {
 
   renderStop(group: StopGroup, state: DeparturesState): void {
     const panel = el<HTMLElement>('inspector');
+    panel.dataset.view = 'stop';
     const body = el<HTMLElement>('inspector-body');
     const chips = group.modes
       .map((m) => `<span class="stop__mode" style="--c:${MODE_SWATCH[m]}">${MODE_LABEL[m]}</span>`)
@@ -550,8 +575,57 @@ export class Ui {
       <div class="veh__mode">Stoppested</div>
       <p class="veh__head">${escapeHtml(group.name)}</p>
       <div class="stop__modes">${chips}</div>
-      <div class="stop__body">${departuresBody(group, state)}</div>
+      <div class="stop__body">${departuresBody(group, state, this.callbacks.serviceNow())}</div>
     `;
+    panel.hidden = false;
+  }
+
+  renderNearby(items: NearbyStop[], boards: NearbyBoards): void {
+    const panel = el<HTMLElement>('inspector');
+    panel.dataset.view = 'nearby';
+    const body = el<HTMLElement>('inspector-body');
+    const now = this.callbacks.serviceNow();
+
+    if (!items.length) {
+      body.innerHTML = `
+        <div class="veh__mode">I nærheten</div>
+        <p class="veh__head">Ingen stopp i nærheten</p>
+        <p class="inspector__note">Vi fant ingen holdeplasser rundt posisjonen din.</p>
+      `;
+      panel.hidden = false;
+      return;
+    }
+
+    const rows = items
+      .map((item, at) => {
+        const state = boards.get(item.group.key) ?? { phase: 'loading' as const };
+        const modes = item.group.modes.map((m) => MODE_SHORT[m]).join('·');
+        return `<li>
+          <button class="near" type="button" data-at="${at}">
+            <span class="near__head">
+              <span class="near__name">${escapeHtml(item.group.name)}</span>
+              <span class="near__walk">${item.walkMin} min gange · ${formatDistance(item.metres)}</span>
+            </span>
+            <span class="near__modes">${escapeHtml(modes)}</span>
+            ${nearbyDepartures(state, now)}
+          </button>
+        </li>`;
+      })
+      .join('');
+
+    body.innerHTML = `
+      <div class="veh__mode">I nærheten</div>
+      <p class="veh__head">${items.length} nærmeste stopp</p>
+      <ul class="nears">${rows}</ul>
+    `;
+
+    for (const node of body.querySelectorAll<HTMLButtonElement>('.near')) {
+      const at = Number(node.dataset.at);
+      node.addEventListener('click', () => {
+        const item = items[at];
+        if (item) this.callbacks.onPickNearby(item);
+      });
+    }
     panel.hidden = false;
   }
 
@@ -589,7 +663,7 @@ function missingNote(missing: Mode[]): string {
     </div>`;
 }
 
-function departuresBody(group: StopGroup, state: DeparturesState): string {
+function departuresBody(group: StopGroup, state: DeparturesState, now: number): string {
   if (state.phase === 'loading') return '<p class="inspector__note">henter avganger&hellip;</p>';
   if (state.phase === 'failed') return '<p class="inspector__note">kunne ikke hente avganger akkurat nå.</p>';
 
@@ -613,6 +687,7 @@ function departuresBody(group: StopGroup, state: DeparturesState): string {
           ${quay}
         </span>
         <span class="dep__when">
+          <span class="dep__count" ${countAttrs(dep.expected, expected)}>${countdownText(dep.expected, now, expected)}</span>
           <span class="dep__time">${shifted ? `<s>${aimed}</s>` : ''}${expected}</span>
           <span class="dep__delay" style="--c:${p.hex}">${dep.realtime ? formatDelay(dep.delay) : 'rutetid'}</span>
         </span>
@@ -621,6 +696,35 @@ function departuresBody(group: StopGroup, state: DeparturesState): string {
     .join('');
 
   return `<p class="calls__title">Neste avganger</p><ul class="deps">${rows}</ul>${note}`;
+}
+
+function nearbyDepartures(state: DeparturesState, now: number): string {
+  if (state.phase === 'loading') return '<span class="near__note">henter avganger&hellip;</span>';
+  if (state.phase === 'failed') return '<span class="near__note">ingen svar akkurat nå</span>';
+  if (state.coverage.level === 'none') return '<span class="near__note">mangler rutetider her</span>';
+  if (!state.departures.length) return '<span class="near__note">ingen flere avganger i dag</span>';
+
+  const rows = state.departures
+    .map((dep) => {
+      const clock = formatServiceTime(dep.expected);
+      return `<span class="near__dep">
+        <span class="badge" style="--c:${dep.color};--tc:${textOn(dep.color)}">${escapeHtml(dep.line || '·')}</span>
+        <span class="near__dep-head">${escapeHtml(dep.headsign || 'ukjent destinasjon')}</span>
+        <span class="near__dep-when" ${countAttrs(dep.expected, clock)}>${countdownText(dep.expected, now, clock)}</span>
+      </span>`;
+    })
+    .join('');
+  return `<span class="near__deps">${rows}</span>`;
+}
+
+function countdownText(expected: number, now: number, fallback: string): string {
+  const delta = expected - now;
+  if (delta < -45) return 'gått';
+  return formatCountdown(delta) ?? fallback;
+}
+
+function countAttrs(expected: number, fallback: string): string {
+  return `data-count="${expected.toFixed(0)}" data-fallback="${escapeHtml(fallback)}"`;
 }
 
 function escapeHtml(value: string): string {

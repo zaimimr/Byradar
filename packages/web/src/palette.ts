@@ -69,3 +69,10 @@ export function formatServiceTime(seconds: number): string {
   const m = Math.floor((wrapped % 3600) / 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
+
+export function formatCountdown(seconds: number): string | null {
+  if (seconds < 45) return 'nå';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return null;
+}

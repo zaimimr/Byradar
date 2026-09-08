@@ -31,6 +31,8 @@ export interface AppState {
   showBuildings: boolean;
   selected: number | null;
   selectedStop: string | null;
+  stopAnchor: string | null;
+  nearby: Fix | null;
   line: LineFilter | null;
   follow: FollowState | null;
   fix: Fix | null;
@@ -79,6 +81,16 @@ export function readHashLineId(): string | null {
   return params.get('line');
 }
 
+export function readHashStopId(): string | null {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  return params.get('stop');
+}
+
+export function hashHasView(): boolean {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  return params.has('lat') && params.has('lon');
+}
+
 export function createState(): AppState {
   const fromHash = readHash();
   return {
@@ -90,6 +102,8 @@ export function createState(): AppState {
     showBuildings: fromHash.showBuildings ?? false,
     selected: null,
     selectedStop: null,
+    stopAnchor: null,
+    nearby: null,
     line: null,
     follow: null,
     fix: null,
@@ -115,6 +129,7 @@ export function syncHash(state: AppState): void {
     if (!state.showLabels) params.set('labels', '0');
     if (state.showBuildings) params.set('buildings', '1');
     if (state.line) params.set('line', state.line.route.id);
+    if (state.stopAnchor) params.set('stop', state.stopAnchor);
     history.replaceState(null, '', `#${params.toString()}`);
   }, 220);
 }

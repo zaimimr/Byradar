@@ -4,16 +4,20 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 
 import { DATA_URL, API_URL, WS_URL } from './endpoints.js';
 import { locate } from './geo.js';
+import type { Fix } from './geo.js';
 import { LiveFeed } from './live.js';
 import { buildLayers } from './layers.js';
 import { calmBasemap, createMap, setBuildingVisibility, setLabelVisibility, supportsBuildings } from './mapbase.js';
 import { buildSearchIndex } from './search.js';
 import type { SearchIndex, StopGroup } from './search.js';
+import { nearestGroups } from './nearby.js';
+import type { NearbyStop } from './nearby.js';
 import { buildVehicleSprites } from './sprites.js';
-import { createState, readHashLineId, syncHash } from './state.js';
+import { createState, hashHasView, readHashLineId, readHashStopId, syncHash } from './state.js';
 import type { LineFilter } from './state.js';
+import { secondsIntoServiceDay } from './time.js';
 import { Ui } from './ui.js';
-import type { Coverage } from './ui.js';
+import type { Coverage, DeparturesState, NearbyBoards } from './ui.js';
 import type {
   DataMeta,
   DepartureStop,
@@ -29,6 +33,11 @@ import type {
 const STALE_AFTER_MS = 8000;
 const DEPARTURE_LIMIT = 12;
 const MAX_GROUP_FETCH = 12;
+const STOP_REFRESH_MS = 30_000;
+const NEARBY_LIMIT = 4;
+const NEARBY_MEMBER_FETCH = 2;
+const NEARBY_DEPARTURE_LIMIT = 3;
+const NEARBY_REFRESH_MS = 60_000;
 const STOP_FLY_ZOOM = 15.4;
 const FOLLOW_ZOOM = 15.2;
 const FOLLOW_VIEWPORT_MAX_WAIT_MS = 1500;
@@ -50,6 +59,16 @@ let nowSec = 0;
 let vehicles: Vehicle[] = [];
 let liveById = new Map<number, Vehicle>();
 let frame = 0;
+let serverSkewMs = 0;
+let stopRefreshTimer: number | undefined;
+let nearbyRefreshTimer: number | undefined;
+let nearbyToken = 0;
+let nearbyBoards: NearbyBoards = new Map();
+
+function serviceNowSec(): number {
+  if (!meta) return 0;
+  return secondsIntoServiceDay(meta.serviceDate, Date.now() + serverSkewMs);
+}
 
 const ui = new Ui({
   onToggleMode: (mode: Mode) => {
@@ -106,6 +125,16 @@ const ui = new Ui({
     map.flyTo({ center: [hit.group.lon, hit.group.lat], zoom: Math.max(map.getZoom(), STOP_FLY_ZOOM), speed: 1.3 });
     void openStop(hit.group);
   },
+  onPickNearby: (item: NearbyStop) => {
+    stopFollow();
+    map.flyTo({
+      center: [item.group.lon, item.group.lat],
+      zoom: Math.max(map.getZoom(), STOP_FLY_ZOOM),
+      speed: 1.3,
+    });
+    void openStop(item.group);
+  },
+  serviceNow: () => serviceNowSec(),
   onClearLine: () => {
     stopFollow();
     state.line = null;
@@ -117,9 +146,25 @@ const ui = new Ui({
 
 function closeInspector(): void {
   state.selected = null;
-  state.selectedStop = null;
+  clearStop();
+  clearNearby();
   stopFollow();
   ui.hideInspector();
+}
+
+function clearStop(): void {
+  state.selectedStop = null;
+  state.stopAnchor = null;
+  if (stopRefreshTimer !== undefined) clearTimeout(stopRefreshTimer);
+  stopRefreshTimer = undefined;
+  syncHash(state);
+}
+
+function clearNearby(): void {
+  state.nearby = null;
+  nearbyToken++;
+  if (nearbyRefreshTimer !== undefined) clearTimeout(nearbyRefreshTimer);
+  nearbyRefreshTimer = undefined;
 }
 
 function lineFilterFor(vehicle: Vehicle): LineFilter | null {
@@ -247,6 +292,16 @@ async function loadStatic(): Promise<void> {
   searchIndex = buildSearchIndex(routes, stops);
   ui.setSearchIndex(searchIndex);
   restoreLineFilter();
+  restoreStop();
+}
+
+function restoreStop(): void {
+  const stopId = readHashStopId();
+  if (!stopId || !searchIndex) return;
+  const group = searchIndex.groupByStopId.get(stopId);
+  if (!group) return;
+  if (!hashHasView()) map.jumpTo({ center: [group.lon, group.lat], zoom: STOP_FLY_ZOOM });
+  void openStop(group);
 }
 
 function restoreLineFilter(): void {
@@ -257,26 +312,83 @@ function restoreLineFilter(): void {
   ui.setLineFilter(state.line);
 }
 
-async function openStop(group: StopGroup): Promise<void> {
-  state.selected = null;
-  state.selectedStop = group.key;
-  ui.renderStop(group, { phase: 'loading' });
-
-  const members = group.members.slice(0, MAX_GROUP_FETCH);
-  const responses = await Promise.all(members.map((member) => fetchDepartures(member.id)));
-  if (state.selectedStop !== group.key) return;
-
+async function loadDepartures(
+  group: StopGroup,
+  limit: number,
+  maxMembers: number,
+): Promise<DeparturesState> {
+  const members = group.members.slice(0, maxMembers);
+  const responses = await Promise.all(members.map((member) => fetchDepartures(member.id, limit)));
   const answered = responses.filter((r): r is StopDepartures => r !== null);
-  if (!answered.length) {
-    ui.renderStop(group, { phase: 'failed' });
-    return;
-  }
+  if (!answered.length) return { phase: 'failed' };
 
   const departures = answered
     .flatMap((r) => r.departures)
     .sort((a, b) => a.expected - b.expected)
-    .slice(0, DEPARTURE_LIMIT);
-  ui.renderStop(group, { phase: 'ready', departures, coverage: mergeCoverage(answered) });
+    .slice(0, limit);
+  return { phase: 'ready', departures, coverage: mergeCoverage(answered) };
+}
+
+async function openStop(group: StopGroup): Promise<void> {
+  state.selected = null;
+  clearNearby();
+  state.selectedStop = group.key;
+  state.stopAnchor = group.members[0]?.id ?? null;
+  syncHash(state);
+  ui.renderStop(group, { phase: 'loading' });
+
+  const board = await loadDepartures(group, DEPARTURE_LIMIT, MAX_GROUP_FETCH);
+  if (state.selectedStop !== group.key) return;
+  ui.renderStop(group, board);
+  scheduleStopRefresh(group);
+}
+
+function scheduleStopRefresh(group: StopGroup): void {
+  if (stopRefreshTimer !== undefined) clearTimeout(stopRefreshTimer);
+  stopRefreshTimer = window.setTimeout(() => {
+    stopRefreshTimer = undefined;
+    if (state.selectedStop !== group.key) return;
+    void (async () => {
+      const board = await loadDepartures(group, DEPARTURE_LIMIT, MAX_GROUP_FETCH);
+      if (state.selectedStop !== group.key) return;
+      if (board.phase === 'ready') ui.renderStop(group, board);
+      scheduleStopRefresh(group);
+    })();
+  }, STOP_REFRESH_MS);
+}
+
+async function openNearby(fix: Fix, refresh = false): Promise<void> {
+  if (!searchIndex) return;
+  if (!refresh) {
+    state.selected = null;
+    clearStop();
+  }
+  clearNearby();
+  state.nearby = fix;
+
+  const items = nearestGroups(searchIndex, fix, NEARBY_LIMIT);
+  const token = ++nearbyToken;
+  const boards: NearbyBoards = new Map(
+    items.map((item) => [
+      item.group.key,
+      (refresh ? nearbyBoards.get(item.group.key) : undefined) ?? { phase: 'loading' },
+    ]),
+  );
+  nearbyBoards = boards;
+  ui.renderNearby(items, boards);
+  if (!items.length) return;
+
+  await Promise.all(
+    items.map(async (item) => {
+      const board = await loadDepartures(item.group, NEARBY_DEPARTURE_LIMIT, NEARBY_MEMBER_FETCH);
+      if (token !== nearbyToken) return;
+      if (board.phase === 'failed' && boards.get(item.group.key)?.phase === 'ready') return;
+      boards.set(item.group.key, board);
+      ui.renderNearby(items, boards);
+    }),
+  );
+  if (token !== nearbyToken) return;
+  nearbyRefreshTimer = window.setTimeout(() => void openNearby(fix, true), NEARBY_REFRESH_MS);
 }
 
 function missingModesOf(stop: DepartureStop): Mode[] {
@@ -299,9 +411,9 @@ function mergeCoverage(answered: StopDepartures[]): Coverage {
   return { level: missing.length === advertised.size ? 'none' : 'partial', missing };
 }
 
-async function fetchDepartures(stopId: string): Promise<StopDepartures | null> {
+async function fetchDepartures(stopId: string, limit: number): Promise<StopDepartures | null> {
   try {
-    const res = await fetch(`${API}/stops/${encodeURIComponent(stopId)}/departures?limit=${DEPARTURE_LIMIT}`);
+    const res = await fetch(`${API}/stops/${encodeURIComponent(stopId)}/departures?limit=${limit}`);
     if (!res.ok) return null;
     return (await res.json()) as StopDepartures;
   } catch {
@@ -322,6 +434,8 @@ async function findMe(): Promise<void> {
   state.fix = outcome.fix;
   ui.setLocateState('active');
   map.flyTo({ center: [outcome.fix.lon, outcome.fix.lat], zoom: Math.max(map.getZoom(), STOP_FLY_ZOOM), speed: 1.3 });
+  stopFollow();
+  await openNearby(outcome.fix);
 }
 
 const feed = new LiveFeed(WS_URL, {
@@ -330,7 +444,8 @@ const feed = new LiveFeed(WS_URL, {
     const cutoff = Date.now() - STALE_AFTER_MS;
     liveById = map_;
     vehicles = [...map_.values()].filter((v) => v.lastChangeMs > 0 && v.seenAt >= cutoff);
-    nowSec = secondsIntoOsloDay(serverTime);
+    serverSkewMs = serverTime - Date.now();
+    nowSec = serviceNowSec();
     ui.setStats(vehicles);
     if (state.follow && !map_.has(state.follow.vid)) {
       const gone = state.follow.line || 'kjøretøyet';
@@ -350,18 +465,6 @@ const feed = new LiveFeed(WS_URL, {
     }
   },
 });
-
-function secondsIntoOsloDay(atMs: number): number {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/Oslo',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).formatToParts(new Date(atMs));
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-  return (get('hour') % 24) * 3600 + get('minute') * 60 + get('second');
-}
 
 function redraw(): void {
   frame++;
@@ -427,7 +530,8 @@ async function handleClick(info: PickingInfo): Promise<void> {
 }
 
 async function selectVehicle(vehicle: Vehicle): Promise<void> {
-  state.selectedStop = null;
+  clearStop();
+  clearNearby();
   if (state.follow && state.follow.vid !== vehicle.vid) stopFollow();
   state.selected = vehicle.vid;
   try {
@@ -478,6 +582,12 @@ if (import.meta.env.DEV) {
         return overlay;
       },
     },
+  });
+}
+
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
 
