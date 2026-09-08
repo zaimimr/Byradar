@@ -15,6 +15,13 @@ export interface LineFilter {
   route: RouteMeta;
 }
 
+export interface FollowState {
+  vid: number;
+  line: string;
+  restoreLine: LineFilter | null;
+  isolated: boolean;
+}
+
 export interface AppState {
   view: ViewState;
   modes: Set<Mode>;
@@ -25,6 +32,7 @@ export interface AppState {
   selected: number | null;
   selectedStop: string | null;
   line: LineFilter | null;
+  follow: FollowState | null;
   fix: Fix | null;
 }
 
@@ -83,6 +91,7 @@ export function createState(): AppState {
     selected: null,
     selectedStop: null,
     line: null,
+    follow: null,
     fix: null,
   };
 }

@@ -11,6 +11,7 @@ import { buildSearchIndex } from './search.js';
 import type { SearchIndex, StopGroup } from './search.js';
 import { buildVehicleSprites } from './sprites.js';
 import { createState, readHashLineId, syncHash } from './state.js';
+import type { LineFilter } from './state.js';
 import { Ui } from './ui.js';
 import type { Coverage } from './ui.js';
 import type {
@@ -29,6 +30,8 @@ const STALE_AFTER_MS = 8000;
 const DEPARTURE_LIMIT = 12;
 const MAX_GROUP_FETCH = 12;
 const STOP_FLY_ZOOM = 15.4;
+const FOLLOW_ZOOM = 15.2;
+const FOLLOW_VIEWPORT_MAX_WAIT_MS = 1500;
 const PICKING_RADIUS = 5;
 const VEHICLE_LAYER_IDS = ['vehicle-hull', 'vehicle-bubble'];
 
@@ -45,6 +48,7 @@ let searchIndex: SearchIndex | null = null;
 let meta: DataMeta | null = null;
 let nowSec = 0;
 let vehicles: Vehicle[] = [];
+let liveById = new Map<number, Vehicle>();
 let frame = 0;
 
 const ui = new Ui({
@@ -80,17 +84,30 @@ const ui = new Ui({
     syncHash(state);
   },
   onCloseInspector: () => closeInspector(),
+  onToggleFollow: () => {
+    if (state.follow) {
+      stopFollow();
+      return;
+    }
+    const vid = state.selected;
+    const vehicle = vid === null ? undefined : liveById.get(vid);
+    if (vehicle) startFollow(vehicle);
+  },
+  onStopFollow: () => stopFollow(),
   onLocate: () => void findMe(),
   onPickLine: (hit) => {
+    stopFollow();
     state.line = { idx: hit.idx, route: hit.route };
     ui.setLineFilter(state.line);
     syncHash(state);
   },
   onPickStop: (hit) => {
+    stopFollow();
     map.flyTo({ center: [hit.group.lon, hit.group.lat], zoom: Math.max(map.getZoom(), STOP_FLY_ZOOM), speed: 1.3 });
     void openStop(hit.group);
   },
   onClearLine: () => {
+    stopFollow();
     state.line = null;
     ui.setLineFilter(null);
     ui.clearSearchQuery();
@@ -101,7 +118,57 @@ const ui = new Ui({
 function closeInspector(): void {
   state.selected = null;
   state.selectedStop = null;
+  stopFollow();
   ui.hideInspector();
+}
+
+function lineFilterFor(vehicle: Vehicle): LineFilter | null {
+  if (vehicle.routeIdx >= 0) {
+    const route = routes[vehicle.routeIdx];
+    return route ? { idx: vehicle.routeIdx, route } : null;
+  }
+  const idx = routes.findIndex((r) => r.line === vehicle.line && r.mode === vehicle.mode);
+  return idx >= 0 ? { idx, route: routes[idx]! } : null;
+}
+
+function startFollow(vehicle: Vehicle): void {
+  const isolate = lineFilterFor(vehicle);
+  state.follow = {
+    vid: vehicle.vid,
+    line: vehicle.line,
+    restoreLine: state.line,
+    isolated: isolate !== null,
+  };
+  if (isolate) {
+    state.line = isolate;
+    ui.setLineFilter(isolate, true);
+  }
+  map.jumpTo({
+    center: [vehicle.lon, vehicle.lat],
+    zoom: Math.max(map.getZoom(), FOLLOW_ZOOM),
+  });
+  ui.setFollowing(state.follow);
+  syncHash(state);
+}
+
+function stopFollow(note?: string): void {
+  const follow = state.follow;
+  if (!follow) return;
+  state.follow = null;
+  if (follow.isolated) {
+    state.line = follow.restoreLine;
+    ui.setLineFilter(follow.restoreLine);
+  }
+  ui.setFollowing(null, note);
+  syncHash(state);
+}
+
+function trackFollowed(): void {
+  const follow = state.follow;
+  if (!follow) return;
+  const target = liveById.get(follow.vid);
+  if (!target) return;
+  map.jumpTo({ center: [target.lon, target.lat] });
 }
 
 ui.syncState(state);
@@ -118,6 +185,8 @@ map.on('load', () => {
   if (state.showBuildings) setBuildingVisibility(map, true);
 });
 
+map.on('dragstart', () => stopFollow());
+
 map.on('move', () => {
   const center = map.getCenter();
   state.view = {
@@ -132,20 +201,30 @@ map.on('move', () => {
 });
 
 let viewportTimer: number | undefined;
+let lastViewportSentMs = 0;
+
+function sendViewport(): void {
+  lastViewportSentMs = Date.now();
+  if (viewportTimer !== undefined) clearTimeout(viewportTimer);
+  viewportTimer = undefined;
+  const b = map.getBounds();
+  const padLon = (b.getEast() - b.getWest()) * 0.25;
+  const padLat = (b.getNorth() - b.getSouth()) * 0.25;
+  feed.reportViewport([
+    b.getWest() - padLon,
+    b.getSouth() - padLat,
+    b.getEast() + padLon,
+    b.getNorth() + padLat,
+  ]);
+}
 
 function scheduleViewportReport(): void {
+  if (Date.now() - lastViewportSentMs >= FOLLOW_VIEWPORT_MAX_WAIT_MS) {
+    sendViewport();
+    return;
+  }
   if (viewportTimer !== undefined) clearTimeout(viewportTimer);
-  viewportTimer = window.setTimeout(() => {
-    const b = map.getBounds();
-    const padLon = (b.getEast() - b.getWest()) * 0.25;
-    const padLat = (b.getNorth() - b.getSouth()) * 0.25;
-    feed.reportViewport([
-      b.getWest() - padLon,
-      b.getSouth() - padLat,
-      b.getEast() + padLon,
-      b.getNorth() + padLat,
-    ]);
-  }, 260);
+  viewportTimer = window.setTimeout(sendViewport, 260);
 }
 
 async function loadStatic(): Promise<void> {
@@ -249,11 +328,17 @@ const feed = new LiveFeed(WS_URL, {
   onHello: () => {},
   onFrame: (map_, serverTime) => {
     const cutoff = Date.now() - STALE_AFTER_MS;
+    liveById = map_;
     vehicles = [...map_.values()].filter((v) => v.lastChangeMs > 0 && v.seenAt >= cutoff);
     nowSec = secondsIntoOsloDay(serverTime);
     ui.setStats(vehicles);
+    if (state.follow && !map_.has(state.follow.vid)) {
+      const gone = state.follow.line || 'kjøretøyet';
+      stopFollow(`linje ${gone} er ute av trafikk`);
+    }
     if (state.selected !== null && !map_.has(state.selected)) {
       state.selected = null;
+      stopFollow();
       ui.hideInspector();
     }
   },
@@ -343,12 +428,16 @@ async function handleClick(info: PickingInfo): Promise<void> {
 
 async function selectVehicle(vehicle: Vehicle): Promise<void> {
   state.selectedStop = null;
+  if (state.follow && state.follow.vid !== vehicle.vid) stopFollow();
   state.selected = vehicle.vid;
   try {
     const res = await fetch(`${API}/vehicles/${vehicle.vid}`);
     if (!res.ok) return;
     const detail = (await res.json()) as VehicleDetail;
-    if (state.selected === vehicle.vid) ui.renderInspector(detail, nowSec);
+    if (state.selected === vehicle.vid) {
+      ui.renderInspector(detail, nowSec);
+      ui.setFollowing(state.follow);
+    }
   } catch {
     ui.hideInspector();
   }
@@ -356,12 +445,18 @@ async function selectVehicle(vehicle: Vehicle): Promise<void> {
 
 function loop(): void {
   feed.sample(Date.now());
+  trackFollowed();
   redraw();
   requestAnimationFrame(loop);
 }
 
 window.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeInspector();
+  if (event.key !== 'Escape') return;
+  if (state.follow) {
+    stopFollow();
+    return;
+  }
+  closeInspector();
 });
 
 if (import.meta.env.DEV) {

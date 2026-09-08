@@ -15,6 +15,7 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 - **Search** over every line and stop in one box, folding `æøå` so `majorstua` finds Majorstuen; picking a line filters the map to it, picking a stop opens its board
 - **Departure boards** on any stop, merging live and scheduled departures across every quay that shares the stop's name
 - **Find my position**, with an accuracy circle and a readable message when the fix is denied, unavailable or outside Oslo
+- **Follow a vehicle**, which locks the camera to it and isolates its line so only that corridor stays drawn. Ends on a map drag, `Esc`, the button, or when the vehicle leaves traffic, and any line filter you had is put back
 
 ## The data problem, and what this does about it
 

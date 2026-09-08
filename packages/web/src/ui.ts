@@ -10,7 +10,7 @@ import {
 } from './palette.js';
 import { flatten, search } from './search.js';
 import type { LineHit, SearchHit, SearchIndex, StopGroup, StopHit } from './search.js';
-import type { AppState, LineFilter } from './state.js';
+import type { AppState, FollowState, LineFilter } from './state.js';
 import type { DataMeta, Departure, Mode, TimetableCoverage, Vehicle, VehicleDetail } from './types.js';
 
 const OSLO_CLOCK = new Intl.DateTimeFormat('nb-NO', {
@@ -50,6 +50,8 @@ export interface UiCallbacks {
   onToggleLabels: () => void;
   onToggleBuildings: () => void;
   onCloseInspector: () => void;
+  onToggleFollow: () => void;
+  onStopFollow: () => void;
   onLocate: () => void;
   onPickLine: (hit: LineHit) => void;
   onPickStop: (hit: StopHit) => void;
@@ -62,6 +64,7 @@ export class Ui {
   private tooltip: HTMLDivElement | null = null;
   private toggles: Record<'stops' | 'network' | 'labels' | 'buildings', HTMLButtonElement> | null = null;
   private locateButton: HTMLButtonElement | null = null;
+  private noteTimer: number | undefined;
   private flash: HTMLParagraphElement | null = null;
   private flashTimer: number | undefined;
   private searchIndex: SearchIndex | null = null;
@@ -306,18 +309,48 @@ export class Ui {
     el<HTMLInputElement>('search-input').setAttribute('aria-expanded', 'false');
   }
 
-  setLineFilter(filter: LineFilter | null): void {
+  setLineFilter(filter: LineFilter | null, following = false): void {
     const node = el<HTMLElement>('search-filter');
+    if (this.noteTimer !== undefined) {
+      clearTimeout(this.noteTimer);
+      this.noteTimer = undefined;
+    }
+    node.dataset.mode = following ? 'follow' : 'filter';
     if (!filter) {
       node.hidden = true;
       node.innerHTML = '';
       return;
     }
     node.style.setProperty('--c', filter.route.color);
-    node.innerHTML = `<span>viser <b>linje ${escapeHtml(filter.route.line)}</b></span>
-      <button class="search__filter-clear" type="button">vis alle</button>`;
-    node.querySelector('button')?.addEventListener('click', () => this.callbacks.onClearLine());
+    const label = following
+      ? `følger <b>linje ${escapeHtml(filter.route.line)}</b> · låst`
+      : `viser <b>linje ${escapeHtml(filter.route.line)}</b>`;
+    node.innerHTML = `<span>${label}</span>
+      <button class="search__filter-clear" type="button">${following ? 'avslutt' : 'vis alle'}</button>`;
+    node.querySelector('button')?.addEventListener('click', () =>
+      following ? this.callbacks.onStopFollow() : this.callbacks.onClearLine(),
+    );
     node.hidden = false;
+  }
+
+  setFollowing(follow: FollowState | null, note?: string): void {
+    const button = document.getElementById('follow-toggle');
+    if (button) {
+      button.dataset.state = follow ? 'active' : 'idle';
+      button.textContent = follow ? 'slutt å følge' : 'følg';
+    }
+    if (note === undefined) return;
+    const node = el<HTMLElement>('search-filter');
+    node.dataset.mode = 'note';
+    node.style.removeProperty('--c');
+    node.innerHTML = `<span>${escapeHtml(note)}</span>`;
+    node.hidden = false;
+    if (this.noteTimer !== undefined) clearTimeout(this.noteTimer);
+    this.noteTimer = window.setTimeout(() => {
+      this.noteTimer = undefined;
+      node.hidden = true;
+      node.innerHTML = '';
+    }, 4200);
   }
 
   clearSearchQuery(): void {
@@ -476,6 +509,7 @@ export class Ui {
         <span class="veh__delay-label">${p.label}<br />mot rutetabell</span>
       </div>
       <div class="veh__progress"><i style="--p:${(v.progress * 100).toFixed(1)}%;--c:${v.color}"></i></div>
+      <button class="veh__follow" id="follow-toggle" type="button" data-state="idle">følg</button>
       ${window.length ? `<p class="calls__title">Neste stopp</p><ul class="calls">${window
         .map((call, i) => {
           const absolute = detail.calls.indexOf(call);
@@ -499,6 +533,9 @@ export class Ui {
         }</span>
       </div>
     `;
+    document
+      .getElementById('follow-toggle')
+      ?.addEventListener('click', () => this.callbacks.onToggleFollow());
     panel.hidden = false;
   }
 

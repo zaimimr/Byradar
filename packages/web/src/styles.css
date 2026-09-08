@@ -1236,3 +1236,39 @@ body {
     width: auto;
   }
 }
+
+.veh__follow {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r);
+  background: var(--slab-raised);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.veh__follow:hover {
+  color: var(--text);
+  border-color: var(--hair-strong);
+}
+
+.veh__follow[data-state='active'] {
+  color: var(--text);
+  border-color: var(--c, var(--hair-strong));
+  background: color-mix(in srgb, var(--slab-raised) 78%, white 22%);
+}
+
+.search__filter[data-mode='follow'] {
+  border-left-width: 3px;
+}
+
+.search__filter[data-mode='note'] {
+  border-left-color: var(--hair-strong);
+  color: var(--text-dim);
+}
