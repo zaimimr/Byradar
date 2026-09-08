@@ -296,7 +296,7 @@ renew over ACME at all. Create one in the Cloudflare dashboard, put the pair in
       - ./certs:/certs:ro
 ```
 
-and replace the `encode` line in the `Caddyfile` site block with:
+and replace the `encode` line in `caddy/Caddyfile`'s site block with:
 
 ```
 	tls /certs/origin.pem /certs/origin.key
@@ -365,6 +365,14 @@ the deploy cannot rewrite the script that is executing. `provision.sh` installs 
 
 Rotating the key: `ssh-keygen -t ed25519 -N '' -f ci_deploy`, replace the line in
 `~/.ssh/authorized_keys` on the box, then `gh secret set DEPLOY_SSH_KEY < ci_deploy`.
+
+### Why the Caddyfile is in a directory
+
+`deploy/caddy/Caddyfile` is mounted as `./caddy:/etc/caddy:ro`, a **directory**, not a
+single file. A single-file bind mount pins the container to that file's inode, and
+`git reset --hard` writes a replacement file with a new inode, so the container keeps
+serving the old config and `caddy reload` cheerfully reloads the stale copy. Mounting
+the directory means the deploy's reload actually sees the new config.
 
 ### What the deploy guarantees
 
