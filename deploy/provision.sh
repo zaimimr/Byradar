@@ -84,6 +84,12 @@ systemctl daemon-reload
 systemctl enable --now byradar-refresh.timer
 systemctl list-timers byradar-refresh.timer --no-pager
 
+log "CI deploy entrypoint"
+install -m 755 byradar-deploy /usr/local/bin/byradar-deploy
+chmod +x ci-deploy.sh
+echo "authorise the CI key with a forced command in ~/.ssh/authorized_keys:"
+echo '  command="/usr/local/bin/byradar-deploy",restrict ssh-ed25519 AAAA... byradar-ci-deploy'
+
 log "waiting for the server to answer /health"
 for _ in $(seq 1 40); do
 	if docker compose exec -T server node -e \

@@ -279,3 +279,48 @@ docker compose build && docker compose up -d   # after a git pull
 `start:force` re-downloads the GTFS zips instead of reusing the cached ones.
 `DATA_DIR` sends pipeline output somewhere other than `/app/data`, which is how
 `refresh-data.sh` stages a run.
+
+## Deploying from GitHub Actions
+
+`.github/workflows/deploy.yml` runs on every push to `main` and on `workflow_dispatch`.
+It does no building of its own: it SSHes in and lets the box do the work, which takes
+about 15 seconds of Vite build plus a container roll.
+
+Repository secrets it needs:
+
+| Secret | Value |
+| --- | --- |
+| `DEPLOY_SSH_KEY` | private half of a deploy-only ed25519 key |
+| `DEPLOY_KNOWN_HOSTS` | `<ip> ssh-ed25519 AAAA...` from `ssh-keyscan -t ed25519 <ip>` |
+| `DEPLOY_HOST` | the box's IP |
+| `DEPLOY_USER` | `root` |
+
+The key is **not** a general shell key. Its `authorized_keys` entry pins a forced
+command, so whatever the client asks for, sshd runs the deploy and nothing else:
+
+```
+command="/usr/local/bin/byradar-deploy",restrict ssh-ed25519 AAAA... byradar-ci-deploy
+```
+
+`restrict` drops port, agent and X11 forwarding, the pty and user rc files. Verify it
+by asking for something else and watching a deploy happen instead:
+
+```sh
+ssh -o IdentitiesOnly=yes -i ci_deploy root@<ip> id
+```
+
+`/usr/local/bin/byradar-deploy` deliberately lives **outside** the git tree. It copies
+`deploy/ci-deploy.sh` to a temp file and runs the copy, so the `git reset --hard` inside
+the deploy cannot rewrite the script that is executing. `provision.sh` installs it.
+
+Rotating the key: `ssh-keygen -t ed25519 -N '' -f ci_deploy`, replace the line in
+`~/.ssh/authorized_keys` on the box, then `gh secret set DEPLOY_SSH_KEY < ci_deploy`.
+
+### What the deploy guarantees
+
+`ci-deploy.sh` records the commit it started from. If `/health` does not answer `ok`
+within 200 seconds of the roll, it prints the last 60 lines of server logs, resets to
+that commit, rebuilds and rolls back. So a broken commit costs a restart, not the site.
+
+It does **not** rebuild the timetable. Data comes from the nightly 04:45 timer, or from
+`./refresh-data.sh` when the pipeline itself changed.

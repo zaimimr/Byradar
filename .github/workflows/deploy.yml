@@ -1,0 +1,54 @@
+name: deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Load the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Pull, build and roll the server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=20 \
+            -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" deploy
+
+      - name: Check the public site answers
+        run: |
+          for attempt in $(seq 1 10); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' https://byradar.no/health || echo 000)
+            if [ "$code" = 200 ]; then
+              echo "byradar.no/health answered 200 on attempt $attempt"
+              exit 0
+            fi
+            echo "attempt $attempt: got $code"
+            sleep 6
+          done
+          echo "byradar.no/health never answered 200" >&2
+          exit 1
+
+      - name: Clean up the key
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519

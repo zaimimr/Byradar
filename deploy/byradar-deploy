@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SRC=${BYRADAR_REPO:-/opt/byradar}/deploy/ci-deploy.sh
+
+if [ ! -f "$SRC" ]; then
+	echo "byradar-deploy: $SRC is missing" >&2
+	exit 1
+fi
+
+RUNNER=$(mktemp /tmp/byradar-deploy.XXXXXX)
+trap 'rm -f "$RUNNER"' EXIT
+cp "$SRC" "$RUNNER"
+chmod +x "$RUNNER"
+
+exec 9>/var/lock/byradar-deploy
+if ! flock -w 900 9; then
+	echo "byradar-deploy: another deploy held the lock for 15 minutes" >&2
+	exit 1
+fi
+
+"$RUNNER"
