@@ -88,11 +88,15 @@ const WEB_PAGES = serveWeb
   ? new Set(readdirSync(WEB_DIST).filter((name) => name.endsWith('.html')))
   : new Set<string>();
 
-function pageFor(url: string): string {
+const NOT_FOUND_PAGE = '404.html';
+
+function pageFor(url: string): string | null {
   const slug = (url.split('?')[0] ?? '').replace(/^\/+|\/+$/g, '');
-  if (!/^[a-z0-9-]+$/.test(slug)) return 'index.html';
+  if (slug === '') return WEB_PAGES.has('index.html') ? 'index.html' : null;
+  if (!/^[a-z0-9-]+$/.test(slug)) return null;
   const page = `${slug}.html`;
-  return WEB_PAGES.has(page) ? page : 'index.html';
+  if (page === NOT_FOUND_PAGE) return null;
+  return WEB_PAGES.has(page) ? page : null;
 }
 
 if (serveWeb) {
@@ -340,7 +344,10 @@ if (serveWeb) {
     if (req.method !== 'GET' || !wantsHtml || req.url.startsWith('/data/')) {
       return reply.code(404).send({ error: 'not found' });
     }
-    return reply.sendFile(pageFor(req.url), WEB_DIST);
+    const page = pageFor(req.url);
+    if (page) return reply.sendFile(page, WEB_DIST);
+    if (!WEB_PAGES.has(NOT_FOUND_PAGE)) return reply.code(404).send({ error: 'not found' });
+    return reply.code(404).type('text/html; charset=utf-8').sendFile(NOT_FOUND_PAGE, WEB_DIST);
   });
 }
 

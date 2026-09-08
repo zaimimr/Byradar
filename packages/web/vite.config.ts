@@ -43,6 +43,7 @@ export default defineConfig(({ mode }) => {
         input: {
           main: resolve(__dirname, 'index.html'),
           om: resolve(__dirname, 'om.html'),
+          notFound: resolve(__dirname, '404.html'),
         },
       },
     },
