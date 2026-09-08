@@ -2,7 +2,7 @@
 <html lang="nb">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Byradar · sanntidskart for kollektivtrafikken i Oslo</title>
     <meta
       name="description"
@@ -148,17 +148,14 @@
         </div>
       </section>
 
-      <section class="inspector" id="inspector" aria-live="polite" hidden>
+      <section class="inspector" id="inspector" aria-live="polite" data-sheet="full" hidden>
+        <button class="inspector__grip" id="inspector-grip" type="button" aria-label="Vis mer eller mindre"></button>
         <button class="inspector__close" id="inspector-close" type="button" aria-label="Lukk">&times;</button>
         <div id="inspector-body"></div>
       </section>
 
       <div class="attrib">
-        <a class="attrib__om" href="/om">om</a> ·
-        <a href="https://developer.entur.org" target="_blank" rel="noreferrer noopener">Entur</a> ·
-        <a href="https://ruter.no" target="_blank" rel="noreferrer noopener">Ruter</a> ·
-        <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noreferrer noopener">© MapTiler</a> ·
-        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer noopener">© OpenStreetMap</a>
+        <a class="attrib__om" href="/om">om</a>
       </div>
     </main>
 
