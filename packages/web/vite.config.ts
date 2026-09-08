@@ -34,6 +34,8 @@ export default defineConfig(({ mode }) => {
       __DATA_URL__: JSON.stringify(env.VITE_DATA_URL ?? 'http://localhost:8787/data'),
       __API_URL__: JSON.stringify(env.VITE_API_URL ?? 'http://localhost:8787'),
       __WS_URL__: JSON.stringify(env.VITE_WS_URL ?? 'ws://localhost:8787/live'),
+      __UMAMI_WEBSITE_ID__: JSON.stringify(env.VITE_UMAMI_WEBSITE_ID ?? ''),
+      __UMAMI_DOMAINS__: JSON.stringify(env.VITE_UMAMI_DOMAINS ?? 'byradar.no'),
     },
     build: {
       target: 'es2022',

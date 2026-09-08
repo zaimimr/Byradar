@@ -2,6 +2,8 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { PickingInfo } from '@deck.gl/core';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
+import './analytics.js';
+
 import { DATA_URL, API_URL, WS_URL } from './endpoints.js';
 import { locate } from './geo.js';
 import type { Fix } from './geo.js';

@@ -11,6 +11,8 @@ x-image: &image
     args:
       VITE_MAPTILER_KEY: ${VITE_MAPTILER_KEY:?set VITE_MAPTILER_KEY in deploy/.env}
       VITE_MAPTILER_STYLE: ${VITE_MAPTILER_STYLE:-dataviz-v4-dark}
+      VITE_UMAMI_WEBSITE_ID: ${VITE_UMAMI_WEBSITE_ID:-}
+      VITE_UMAMI_DOMAINS: ${VITE_UMAMI_DOMAINS:-byradar.no}
 
 services:
   server:

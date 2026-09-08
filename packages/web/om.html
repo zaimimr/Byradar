@@ -145,8 +145,21 @@
 
       <section class="doc__section">
         <h2 class="doc__h">Personvern</h2>
+        <p>
+          Byradar teller besøk med <a href="https://umami.is" rel="noreferrer noopener">Umami</a>, for å se om noen
+          faktisk bruker kartet. Ingen informasjonskapsler, ingen annonsenettverk, ingenting som følger deg videre til
+          andre nettsteder.
+        </p>
         <ul class="doc__list">
-          <li>Ingen sporing, ingen analyseverktøy, ingen informasjonskapsler.</li>
+          <li>
+            Det som telles: hvilken side du åpnet, hvor du kom fra, land, språk, skjermstørrelse og nettlesertype.
+            Ingenting av dette peker tilbake på deg som person.
+          </li>
+          <li>
+            Adressefeltet sendes uten alt etter <code>#</code>, så hvor du panorerer, hvilken linje du filtrerer på og
+            hvilket stopp du åpner, blir aldri sendt.
+          </li>
+          <li>Sender nettleseren din «Do Not Track», telles du ikke i det hele tatt.</li>
           <li>
             Trykker du på min posisjon, blir posisjonen liggende i nettleseren. Den brukes til å finne nærmeste stopp
             og sendes aldri til serveren.
@@ -156,6 +169,10 @@
             Utover vanlig driftslogg lagres det ingenting om deg.
           </li>
         </ul>
+        <p>
+          Vil du ikke telles, kan du kjøre denne i konsollen i nettleseren:
+          <code>localStorage.setItem('umami.disabled', 1)</code>.
+        </p>
       </section>
 
       <section class="doc__section">
@@ -175,5 +192,7 @@
         <a href="/">← kartet</a>
       </footer>
     </main>
+
+    <script type="module" src="/src/analytics.ts"></script>
   </body>
 </html>

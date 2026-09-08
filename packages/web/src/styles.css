@@ -2124,3 +2124,13 @@ body {
     right: min(430px, 56vw);
   }
 }
+
+.doc code {
+  padding: 1px 5px;
+  border: 1px solid var(--hair);
+  border-radius: 2px;
+  background: var(--slab-raised);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
