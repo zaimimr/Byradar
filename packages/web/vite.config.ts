@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 const CLEAN_URLS: Record<string, string> = {
   '/om': '/om.html',
   '/om/': '/om.html',
+  '/tilbakemelding': '/tilbakemelding.html',
+  '/tilbakemelding/': '/tilbakemelding.html',
 };
 
 function cleanUrls(): Plugin {
@@ -12,8 +14,9 @@ function cleanUrls(): Plugin {
     name: 'byradar-clean-urls',
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
-        const target = req.url ? CLEAN_URLS[req.url] : undefined;
-        if (target) req.url = target;
+        const [path, query] = (req.url ?? '').split('?');
+        const target = path ? CLEAN_URLS[path] : undefined;
+        if (target) req.url = query ? `${target}?${query}` : target;
         next();
       });
     },
@@ -43,6 +46,7 @@ export default defineConfig(({ mode }) => {
         input: {
           main: resolve(__dirname, 'index.html'),
           om: resolve(__dirname, 'om.html'),
+          tilbakemelding: resolve(__dirname, 'tilbakemelding.html'),
           notFound: resolve(__dirname, '404.html'),
         },
       },

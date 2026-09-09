@@ -4,5 +4,6 @@ Disallow: /data/
 Disallow: /stops/
 Disallow: /vehicles/
 Disallow: /health
+Disallow: /feedback
 
 Sitemap: https://byradar.no/sitemap.xml

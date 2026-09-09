@@ -1,6 +1,6 @@
 # Byradar
 
-Live transit map for Oslo. Public at https://byradar.no, source at https://github.com/zaimimr/byradar.
+Live transit map for Oslo. Public at https://byradar.no. The GitHub repo is private, so nothing on the site should point at it.
 
 ## Workflow: no pull requests
 
@@ -45,6 +45,7 @@ The nightly systemd timer already rebuilds the data at 04:45 Oslo time, so a nor
 
 - Images are pinned to `linux/amd64`. Build on the box, not on the Mac, where it emulates.
 - `VITE_MAPTILER_KEY` is baked in at image build time. Changing it means a rebuild, not a restart.
-- API routes live at the domain root: `/health`, `/vehicles/:vid`, `/stops/:stopPlaceId/departures`, `/live`. There is no `/api` prefix.
+- API routes live at the domain root: `/health`, `/vehicles/:vid`, `/stops/:stopPlaceId/departures`, `/situations`, `/feedback`, `/live`. There is no `/api` prefix.
+- Rider feedback lands in `data/feedback/feedback.jsonl` on the `data` volume. Read it with `GET /feedback` as admin (loopback on the box, or `ADMIN_TOKEN` bearer). `refresh-data.sh` only swaps `data/server` and `data/web`, so the file survives a rebuild.
 - After midnight Oslo, `serviceDate` trailing the calendar date by one day is correct. Night service belongs to the previous service day.
 - `refresh-data.sh` stages a generation and rolls back on failure, so a failed rebuild never reaches live data.

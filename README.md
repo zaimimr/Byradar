@@ -6,6 +6,7 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 
 ## What it shows
 
+- **Feedback page** at `/tilbakemelding`, carrying the map view you came from so a report says where you were looking
 - **206 lines** in the Oslo core, drawn from real route geometry with each operator's own line colours
 - **~750-850 vehicles** in motion at peak, drawn two ways: zoomed out, an upright bubble carrying the mode pictogram, the line number and a small arrow for heading; past zoom 16.8, the vehicle's true-scale footprint aligned to the street
 - **Punctuality edge** on every vehicle: blue early, green within 3 min, amber 3-7 min late, red beyond
@@ -56,6 +57,20 @@ Vy never populates `destinationName` on the realtime feed - it is null for every
 1. `trip_headsign` from the ingested Vy/Flytoget GTFS, keyed by journey id (~1360 journeys, no network call)
 2. Journey Planner v3 `datedServiceJourney`/`serviceJourney` lookup for journeys added after the GTFS snapshot, cached in memory with negative caching and request spacing
 3. The line's own name as a last resort, so nothing ever reads "unknown destination"
+
+## Feedback
+
+`/tilbakemelding` is the place riders report a bus in the fjord, a missing line or times that do not match. The map's attribution bar links there and carries the current view along, so a report arrives with the exact hash the reporter was looking at.
+
+`POST /feedback` takes `{kind, message, place, contact, view}`, is same-site guarded, capped at 10 posts per 10 minutes per IP, and appends one JSON line to `data/feedback/feedback.jsonl` on the docker volume, which the nightly timetable refresh never touches. A hidden `nettsted` field swallows bots: the post is accepted and thrown away. Nothing else is stored, no IP, no user agent.
+
+Read the inbox as admin, over loopback on the box or with `ADMIN_TOKEN`:
+
+```bash
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" 'https://byradar.no/feedback?limit=50'
+```
+
+Set `FEEDBACK_WEBHOOK_URL` to also push each entry to a Slack or Discord webhook. `FEEDBACK_DIR`, `FEEDBACK_MAX_BYTES`, `FEEDBACK_RATE_MAX` and `FEEDBACK_RATE_WINDOW_MS` tune the rest.
 
 ## Data sources
 

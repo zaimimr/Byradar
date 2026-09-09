@@ -69,6 +69,13 @@ export const ENV = {
     .filter(Boolean),
   maxSocketsPerIp: int('MAX_SOCKETS_PER_IP', 20),
   adminToken: process.env.ADMIN_TOKEN ?? '',
+  feedbackDir: process.env.FEEDBACK_DIR
+    ? resolve(REPO_ROOT, process.env.FEEDBACK_DIR)
+    : resolve(REPO_ROOT, 'data', 'feedback'),
+  feedbackMaxBytes: int('FEEDBACK_MAX_BYTES', 8 * 1024 * 1024),
+  feedbackRateMax: int('FEEDBACK_RATE_MAX', 10),
+  feedbackRateWindowMs: int('FEEDBACK_RATE_WINDOW_MS', 600_000),
+  feedbackWebhook: process.env.FEEDBACK_WEBHOOK_URL ?? '',
 } as const;
 
 export const ENTUR = {

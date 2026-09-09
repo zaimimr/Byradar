@@ -14,6 +14,7 @@ import { DestinationResolver } from './destinations.js';
 import { Engine, type VehicleState } from './engine.js';
 import { startGpsPoller } from './entur.js';
 import { ENV, REPO_ROOT } from './env.js';
+import { FeedbackStore, notify, readDraft } from './feedback.js';
 import { isSkipped, startTripUpdatePoller } from './rt.js';
 import { EMPTY_SITUATIONS, startSituationPoller, type SituationSnapshot } from './situations.js';
 import { Store } from './store.js';
@@ -26,6 +27,7 @@ const engine = new Engine(store, destinations);
 const departureIndex = DepartureIndex.build(store);
 const remoteBoards = new RemoteBoards(store.meta.serviceDate);
 const routeIds = new Set(store.routes.map((route) => route.id));
+const feedback = await FeedbackStore.open(ENV.feedbackDir, ENV.feedbackMaxBytes);
 let situations: SituationSnapshot = EMPTY_SITUATIONS;
 let situationErrors = 0;
 
@@ -67,10 +69,11 @@ await app.register(rateLimit, {
   allowList: (req) => req.url === '/health' && isAdmin(req),
 });
 
-const GUARDED_PREFIXES = ['/data/', '/stops/', '/vehicles/', '/situations'];
+const GUARDED_PREFIXES = ['/data/', '/stops/', '/vehicles/', '/situations', '/feedback'];
 
 app.addHook('onRequest', async (req, reply) => {
   if (!GUARDED_PREFIXES.some((prefix) => req.url.startsWith(prefix))) return;
+  if (isAdmin(req)) return;
   if (!guardHttp(req, reply)) return reply;
 });
 
@@ -246,6 +249,7 @@ app.get('/health', async (req) => {
       updatedAt: situations.updatedAt,
       errors: situationErrors,
     },
+    feedback: feedback.stats,
     correctionsAbsorbed: engine.correctionsAbsorbed,
     clients: clients.size,
     vehicles: engine.snapshot().length,
@@ -295,6 +299,42 @@ app.get<{ Params: { stopPlaceId: string }; Querystring: { limit?: string } }>(
     return withRemoteDepartures(board, remote, board.stop.missingModes, limit);
   },
 );
+
+const FEEDBACK_PAGE_LIMIT = 200;
+
+app.post('/feedback', {
+  config: { rateLimit: { max: ENV.feedbackRateMax, timeWindow: ENV.feedbackRateWindowMs } },
+  bodyLimit: 16 * 1024,
+}, async (req, reply) => {
+  const draft = readDraft(req.body);
+  if (!draft.ok) return reply.code(400).send({ error: draft.error });
+  if (draft.spam) return { ok: true };
+  if (feedback.full) {
+    return reply.code(503).send({ error: 'feedback inbox is full' });
+  }
+  try {
+    await feedback.append(draft.entry);
+  } catch (err) {
+    req.log.error({ err: String(err) }, 'feedback write failed');
+    return reply.code(500).send({ error: 'could not store the feedback' });
+  }
+  if (ENV.feedbackWebhook) {
+    notify(ENV.feedbackWebhook, draft.entry).catch((err) => {
+      req.log.warn({ err: String(err) }, 'feedback webhook failed');
+    });
+  }
+  req.log.info({ kind: draft.entry.kind }, 'feedback');
+  return { ok: true };
+});
+
+app.get<{ Querystring: { limit?: string } }>('/feedback', async (req, reply) => {
+  if (!isAdmin(req)) return reply.code(404).send({ error: 'not found' });
+  const requested = Number(req.query.limit);
+  const limit = Number.isFinite(requested)
+    ? Math.min(FEEDBACK_PAGE_LIMIT, Math.max(1, Math.trunc(requested)))
+    : 50;
+  return { ...feedback.stats, entries: await feedback.recent(limit) };
+});
 
 app.get('/situations', {
   config: { rateLimit: { max: ENV.apiRateLimitMax, timeWindow: ENV.rateLimitWindowMs } },

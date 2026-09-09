@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="no" class="doc-page">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Si fra om noe rart · Byradar</title>
+    <meta
+      name="description"
+      content="Meld feil på Byradar-kartet: kjøretøy på feil sted, linjer som mangler, tider som ikke stemmer, eller en idé til noe som burde finnes."
+    />
+    <link rel="canonical" href="https://byradar.no/tilbakemelding" />
+    <meta name="theme-color" content="#07090c" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Byradar" />
+    <meta property="og:locale" content="nb_NO" />
+    <meta property="og:url" content="https://byradar.no/tilbakemelding" />
+    <meta property="og:title" content="Si fra om noe rart · Byradar" />
+    <meta
+      property="og:description"
+      content="Sett noe rart på kartet? Skriv det her, så havner det rett hos den som lager Byradar."
+    />
+    <meta property="og:image" content="https://byradar.no/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://byradar.no/og.jpg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..700&family=Martian+Mono:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <svg class="grain" aria-hidden="true">
+      <filter id="grain-filter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.86" numOctaves="3" stitchTiles="stitch" />
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#grain-filter)" />
+    </svg>
+
+    <main class="doc">
+      <header class="doc__head">
+        <a class="doc__back" href="/">tilbake til kartet</a>
+        <div class="doc__mark" aria-hidden="true">
+          <span class="masthead__bar" style="--c: #ec700c"></span>
+          <span class="masthead__bar" style="--c: #0b91ef"></span>
+          <span class="masthead__bar" style="--c: #e60000"></span>
+          <span class="masthead__bar" style="--c: #354f7f"></span>
+        </div>
+        <h1 class="doc__title">Si fra om noe rart</h1>
+        <p class="doc__lede">
+          En buss som kjører i sjøen, en trikkelinje som mangler, tider som ikke stemmer, eller noe du savner på
+          kartet: skriv det her. Det går rett til den som lager Byradar, og du trenger ingen konto.
+        </p>
+      </header>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Tilbakemelding</h2>
+
+        <div class="ctx" id="ctx" hidden>
+          <div class="ctx__body">
+            <span class="ctx__label">Kartutsnittet du kom fra</span>
+            <a class="ctx__link" id="ctx-link" href="/">åpne utsnittet</a>
+          </div>
+          <button class="ctx__drop" id="ctx-drop" type="button">ikke ta det med</button>
+        </div>
+
+        <form class="form" id="form" novalidate>
+          <fieldset class="kinds">
+            <legend class="field__label">Hva gjelder det</legend>
+            <div class="kinds__row">
+              <label class="kind">
+                <input type="radio" name="kind" value="kart" checked />
+                <span>Feil på kartet</span>
+              </label>
+              <label class="kind">
+                <input type="radio" name="kind" value="tider" />
+                <span>Tider og data</span>
+              </label>
+              <label class="kind">
+                <input type="radio" name="kind" value="ide" />
+                <span>Idé</span>
+              </label>
+              <label class="kind">
+                <input type="radio" name="kind" value="annet" />
+                <span>Annet</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="field">
+            <label class="field__label" for="message">Hva skjedde</label>
+            <textarea
+              class="field__input field__input--area"
+              id="message"
+              name="message"
+              rows="6"
+              maxlength="2000"
+              required
+              placeholder="Linje 34 mot Tåsen sto stille midt i Kirkeveien i tjue minutter, mens Ruter-appen viste den ved Ullevål."
+            ></textarea>
+            <p class="field__hint">
+              <span>Detaljer hjelper: linje, retning, klokkeslett.</span>
+              <span class="field__count" id="count">0 / 2000</span>
+            </p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="place">Hvor <span class="field__opt">valgfritt</span></label>
+            <input
+              class="field__input"
+              id="place"
+              name="place"
+              type="text"
+              maxlength="120"
+              autocomplete="off"
+              placeholder="Linje 34, Majorstuen, Bjørvika"
+            />
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="contact">E-post <span class="field__opt">bare om du vil ha svar</span></label>
+            <input
+              class="field__input"
+              id="contact"
+              name="contact"
+              type="email"
+              maxlength="160"
+              autocomplete="email"
+              placeholder="deg@example.com"
+            />
+          </div>
+
+          <label class="trap" aria-hidden="true">
+            Nettsted
+            <input id="nettsted" name="nettsted" type="text" tabindex="-1" autocomplete="off" />
+          </label>
+
+          <div class="form__foot">
+            <button class="form__send" id="send" type="submit">Send inn</button>
+            <p class="form__status" id="status" role="status" aria-live="polite"></p>
+          </div>
+        </form>
+
+        <p class="form__note" id="note">
+          Det du skriver blir lagret på serveren bak Byradar og lest av én person. Ingen konto, ingen
+          informasjonskapsler, og e-posten din brukes bare til å svare deg.
+        </p>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Før du melder tider</h2>
+        <p>
+          De fleste posisjonene på kartet er beregnet fra rutetabellen og korrigert med live avvik, ikke målt med GPS.
+          Et kjøretøy kan derfor ligge et stykke fra der det faktisk er mellom to stopp. Det er forklart under
+          <a href="/om">om Byradar</a>. Skal du rekke noe, er <a href="https://ruter.no" rel="noreferrer noopener">Ruter</a> fasit.
+        </p>
+      </section>
+
+      <footer class="doc__foot">
+        <a href="/">← kartet</a>
+        <a href="/om">om byradar</a>
+      </footer>
+    </main>
+
+    <script type="module" src="/src/feedback.ts"></script>
+  </body>
+</html>

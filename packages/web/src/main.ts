@@ -272,6 +272,14 @@ map.on('load', () => {
 
 map.on('dragstart', () => stopFollow());
 
+const feedbackLink = document.getElementById('attrib-feedback') as HTMLAnchorElement | null;
+
+function carryViewToFeedback(): void {
+  if (!feedbackLink) return;
+  const hash = location.hash.replace(/^#/, '');
+  feedbackLink.href = hash ? `/tilbakemelding?kart=${encodeURIComponent(hash)}` : '/tilbakemelding';
+}
+
 map.on('move', () => {
   const center = map.getCenter();
   state.view = {
@@ -282,6 +290,7 @@ map.on('move', () => {
     bearing: map.getBearing(),
   };
   syncHash(state);
+  carryViewToFeedback();
   scheduleViewportReport();
 });
 

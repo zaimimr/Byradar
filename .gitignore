@@ -9,3 +9,4 @@ data/server/
 .DS_Store
 *.tsbuildinfo
 deploy/certs/
+data/feedback/
