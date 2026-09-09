@@ -7,6 +7,7 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 ## What it shows
 
 - **Boligsjekk** on any address or map point: a 0-100 score for the transit on offer around it, the stops within walking distance with their weekday-morning frequency, the day's departure rhythm, and door-to-door travel times for a weekday 08:00 departure. Built for house hunting, and the URL carries the point so a check can be sent to someone else
+- **Trains counted too.** The ingested timetable only has Ruter stop times, so when a station sits within walking distance the profile pulls that station's rail departures from Entur for the same weekday, groups them by line and track (track stands in for direction, since Vy leaves `directionType` unknown), and folds them into frequency, breadth and evening service. Busy stations that cap out at 400 calls get a second query for the late window so the last train is still right
 - **Feedback page** at `/tilbakemelding`, carrying the map view you came from so a report says where you were looking
 - **206 lines** in the Oslo core, drawn from real route geometry with each operator's own line colours
 - **~750-850 vehicles** in motion at peak, drawn two ways: zoomed out, an upright bubble carrying the mode pictogram, the line number and a small arrow for heading; past zoom 16.8, the vehicle's true-scale footprint aligned to the street

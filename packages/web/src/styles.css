@@ -458,6 +458,12 @@ body {
   color: var(--text-dim);
 }
 
+.prov--live {
+  background: rgba(27, 122, 90, 0.18);
+  border: 1px solid rgba(27, 122, 90, 0.6);
+  color: #58c79b;
+}
+
 .prov--missing {
   background: rgba(233, 166, 63, 0.12);
   border: 1px dashed rgba(233, 166, 63, 0.5);

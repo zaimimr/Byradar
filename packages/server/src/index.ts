@@ -18,6 +18,7 @@ import { ENV, REPO_ROOT } from './env.js';
 import { FeedbackStore, notify, readDraft } from './feedback.js';
 import { Geocoder } from './geocode.js';
 import { profilePlace } from './place.js';
+import { RailBoards } from './rail.js';
 import { isSkipped, startTripUpdatePoller } from './rt.js';
 import { EMPTY_SITUATIONS, startSituationPoller, type SituationSnapshot } from './situations.js';
 import { Store } from './store.js';
@@ -33,6 +34,7 @@ const routeIds = new Set(store.routes.map((route) => route.id));
 const feedback = await FeedbackStore.open(ENV.feedbackDir, ENV.feedbackMaxBytes);
 const geocoder = new Geocoder(store.meta.bbox);
 const commutes = new Commutes();
+const railBoards = new RailBoards(store.meta.serviceDate);
 let situations: SituationSnapshot = EMPTY_SITUATIONS;
 let situationErrors = 0;
 
@@ -259,6 +261,7 @@ app.get('/health', async (req) => {
     remoteBoards: remoteBoards.stats,
     geocoder: geocoder.stats,
     commutes: commutes.stats,
+    railBoards: railBoards.stats,
     situations: {
       count: situations.situations.length,
       updatedAt: situations.updatedAt,
@@ -343,7 +346,7 @@ app.get<{ Querystring: { lat?: string; lon?: string } }>('/place', {
   const point = readPoint(req.query);
   if (!point) return reply.code(400).send({ error: 'punktet ligger utenfor kartutsnittet for Oslo' });
   reply.header('Cache-Control', 'private, max-age=300');
-  return profilePlace(store, departureIndex, point.lat, point.lon);
+  return profilePlace(store, departureIndex, railBoards, point.lat, point.lon);
 });
 
 app.get<{ Querystring: { lat?: string; lon?: string; to?: string } }>('/place/commute', {

@@ -37,6 +37,7 @@ export interface PlaceStop {
   lines: PlaceLine[];
   timetable: 'full' | 'partial' | 'none';
   missingModes: Mode[];
+  liveModes: Mode[];
 }
 
 export interface ScorePart {
@@ -66,7 +67,7 @@ export interface PlaceProfile {
   };
   hourly: number[];
   stops: PlaceStop[];
-  coverage: { level: 'full' | 'partial' | 'none'; missing: Mode[] };
+  coverage: { level: 'full' | 'partial' | 'none'; missing: Mode[]; live: Mode[] };
 }
 
 export interface CommuteLeg {

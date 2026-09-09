@@ -1,4 +1,5 @@
 import type { DepartureIndex } from './departures.js';
+import type { RailBoards, RailScan } from './rail.js';
 import type { Store } from './store.js';
 import { osloMidnightUtcMs } from './time.js';
 
@@ -57,6 +58,7 @@ export interface PlaceStop {
   lines: PlaceLine[];
   timetable: 'full' | 'partial' | 'none';
   missingModes: string[];
+  liveModes: string[];
 }
 
 export interface ScorePart {
@@ -86,7 +88,7 @@ export interface PlaceProfile {
   };
   hourly: number[];
   stops: PlaceStop[];
-  coverage: { level: 'full' | 'partial' | 'none'; missing: string[] };
+  coverage: { level: 'full' | 'partial' | 'none'; missing: string[]; live: string[] };
 }
 
 interface Bucket {
@@ -110,9 +112,13 @@ interface Cluster {
 }
 
 interface Scan {
+  cluster: Cluster;
+  best: Map<string, Bucket>;
+  modes: Set<string>;
+  missing: Set<string>;
+  live: Set<string>;
   stop: PlaceStop;
   hourly: number[];
-  best: Map<string, Bucket>;
 }
 
 function normalize(value: string): string {
@@ -156,6 +162,10 @@ function weekdayOf(serviceDate: string): number {
   return new Date(osloMidnightUtcMs(serviceDate) + 12 * 3600_000).getUTCDay();
 }
 
+function inPeak(aimed: number): boolean {
+  return aimed >= PEAK_FROM_SEC && aimed < PEAK_TO_SEC;
+}
+
 function clustersAround(store: Store, lat: number, lon: number): Cluster[] {
   const byName = new Map<string, Cluster[]>();
   for (let place = 0; place < store.stopPlaces.length; place++) {
@@ -164,7 +174,9 @@ function clustersAround(store: Store, lat: number, lon: number): Cluster[] {
     if (metres > WALK_RADIUS_M) continue;
     const key = normalize(stop.name);
     const bucket = byName.get(key);
-    const near = bucket?.find((cluster) => metresBetween(cluster.lat, cluster.lon, stop.lat, stop.lon) <= GROUP_RADIUS_M);
+    const near = bucket?.find(
+      (cluster) => metresBetween(cluster.lat, cluster.lon, stop.lat, stop.lon) <= GROUP_RADIUS_M,
+    );
     if (near) {
       near.places.push(place);
       if (metres < near.metres) near.metres = metres;
@@ -177,19 +189,15 @@ function clustersAround(store: Store, lat: number, lon: number): Cluster[] {
   return [...byName.values()].flat();
 }
 
-function scanCluster(store: Store, index: DepartureIndex, cluster: Cluster): Scan | null {
+function collectCluster(store: Store, index: DepartureIndex, cluster: Cluster): Scan | null {
   const byDirection = new Map<string, Bucket>();
   const modes = new Set<string>();
   const missing = new Set<string>();
-  let timetable: 'full' | 'partial' | 'none' = 'full';
 
   for (const place of cluster.places) {
     const stop = store.stopPlaces[place]!;
     for (const mode of stop.modes) modes.add(mode);
-    const coverage = index.coverageOf(place);
-    for (const mode of coverage.missingModes) missing.add(mode);
-    if (coverage.timetable === 'none' && timetable !== 'partial') timetable = 'none';
-    if (coverage.timetable === 'partial') timetable = 'partial';
+    for (const mode of index.coverageOf(place).missingModes) missing.add(mode);
 
     const from = index.startOf(place);
     const to = index.endOf(place);
@@ -198,23 +206,23 @@ function scanCluster(store: Store, index: DepartureIndex, cluster: Cluster): Sca
       const trip = store.trips[index.tripAt(i)]!;
       const route = store.routes[trip.r]!;
       const key = `${route.mode}|${route.line}|${trip.d}`;
-      let bucket = byDirection.get(key);
+      const bucket = byDirection.get(key);
       if (!bucket) {
-        bucket = {
+        byDirection.set(key, {
           line: route.line,
           mode: route.mode,
           color: route.color,
-          peak: 0,
-          day: 0,
-          evening: 0,
+          peak: inPeak(aimed) ? 1 : 0,
+          day: 1,
+          evening: aimed >= EVENING_FROM_SEC ? 1 : 0,
           first: aimed,
           last: aimed,
-          hourly: new Array<number>(24).fill(0),
-        };
-        byDirection.set(key, bucket);
+          hourly: hourlyWith(aimed),
+        });
+        continue;
       }
       bucket.day++;
-      if (aimed >= PEAK_FROM_SEC && aimed < PEAK_TO_SEC) bucket.peak++;
+      if (inPeak(aimed)) bucket.peak++;
       if (aimed >= EVENING_FROM_SEC) bucket.evening++;
       if (aimed < bucket.first) bucket.first = aimed;
       if (aimed > bucket.last) bucket.last = aimed;
@@ -233,13 +241,56 @@ function scanCluster(store: Store, index: DepartureIndex, cluster: Cluster): Sca
     }
   }
 
+  const scan: Scan = {
+    cluster,
+    best,
+    modes,
+    missing,
+    live: new Set<string>(),
+    hourly: new Array<number>(24).fill(0),
+    stop: emptyStop(store, cluster),
+  };
+  summarize(scan);
+  return scan;
+}
+
+function hourlyWith(aimed: number): number[] {
+  const hourly = new Array<number>(24).fill(0);
+  hourly[Math.floor(aimed / 3600) % 24]!++;
+  return hourly;
+}
+
+function emptyStop(store: Store, cluster: Cluster): PlaceStop {
+  const anchor = store.stopPlaces[cluster.places[0]!]!;
+  return {
+    id: anchor.id,
+    name: cluster.name,
+    lat: cluster.lat,
+    lon: cluster.lon,
+    modes: [],
+    metres: Math.round(cluster.metres),
+    walkMin: walkMinutes(cluster.metres),
+    perHour: 0,
+    dayTotal: 0,
+    eveningCount: 0,
+    firstDep: null,
+    lastDep: null,
+    lines: [],
+    timetable: 'none',
+    missingModes: [],
+    liveModes: [],
+  };
+}
+
+function summarize(scan: Scan): void {
   const hourly = new Array<number>(24).fill(0);
   let peak = 0;
   let day = 0;
   let evening = 0;
   let first: number | null = null;
   let last: number | null = null;
-  for (const bucket of best.values()) {
+
+  for (const bucket of scan.best.values()) {
     peak += bucket.peak;
     day += bucket.day;
     evening += bucket.evening;
@@ -248,39 +299,71 @@ function scanCluster(store: Store, index: DepartureIndex, cluster: Cluster): Sca
     if (last === null || bucket.last > last) last = bucket.last;
   }
 
-  const anchor = store.stopPlaces[cluster.places[0]!]!;
-  const lines = [...best.values()]
-    .sort((a, b) => b.peak - a.peak || b.day - a.day)
-    .slice(0, MAX_LINES_PER_STOP)
-    .map((bucket) => ({
+  const missing = [...scan.missing];
+  const timetable: 'full' | 'partial' | 'none' =
+    missing.length === 0 ? 'full' : missing.length >= scan.modes.size ? 'none' : 'partial';
+
+  scan.hourly = hourly;
+  scan.stop = {
+    ...scan.stop,
+    modes: [...scan.modes],
+    perHour: +(peak / PEAK_HOURS).toFixed(1),
+    dayTotal: day,
+    eveningCount: evening,
+    firstDep: first,
+    lastDep: last,
+    lines: pickLines(scan.best).map((bucket) => ({
       line: bucket.line,
       mode: bucket.mode,
       color: bucket.color,
       perHour: +(bucket.peak / PEAK_HOURS).toFixed(1),
       day: bucket.day,
-    }));
-
-  return {
-    hourly,
-    best,
-    stop: {
-      id: anchor.id,
-      name: cluster.name,
-      lat: cluster.lat,
-      lon: cluster.lon,
-      modes: [...modes],
-      metres: Math.round(cluster.metres),
-      walkMin: walkMinutes(cluster.metres),
-      perHour: +(peak / PEAK_HOURS).toFixed(1),
-      dayTotal: day,
-      eveningCount: evening,
-      firstDep: first,
-      lastDep: last,
-      lines,
-      timetable,
-      missingModes: [...missing],
-    },
+    })),
+    timetable,
+    missingModes: missing,
+    liveModes: [...scan.live],
   };
+}
+
+function pickLines(best: Map<string, Bucket>): Bucket[] {
+  const byFrequency = [...best.values()].sort((a, b) => b.peak - a.peak || b.day - a.day);
+  const chosen: Bucket[] = [];
+  const modes = new Set<string>();
+  for (const bucket of byFrequency) {
+    if (modes.has(bucket.mode)) continue;
+    modes.add(bucket.mode);
+    chosen.push(bucket);
+  }
+  for (const bucket of byFrequency) {
+    if (chosen.length >= MAX_LINES_PER_STOP) break;
+    if (!chosen.includes(bucket)) chosen.push(bucket);
+  }
+  return chosen
+    .slice(0, MAX_LINES_PER_STOP)
+    .sort((a, b) => b.peak - a.peak || b.day - a.day);
+}
+
+function mergeRail(scan: Scan, rail: RailScan): void {
+  scan.missing.delete('rail');
+  if (!rail.lines.length) {
+    summarize(scan);
+    return;
+  }
+  for (const line of rail.lines) {
+    scan.best.set(`rail|${line.line}`, {
+      line: line.line,
+      mode: 'rail',
+      color: line.color,
+      peak: line.peak,
+      day: line.day,
+      evening: line.evening,
+      first: line.first,
+      last: line.last,
+      hourly: line.hourly,
+    });
+  }
+  scan.live.add('rail');
+  summarize(scan);
 }
 
 function gradeFor(total: number): { grade: string; label: string } {
@@ -322,16 +405,38 @@ function pickStops(found: PlaceStop[], rail: PlaceStop | null): PlaceStop[] {
   return chosen;
 }
 
-export function profilePlace(
+function railMemberOf(store: Store, cluster: Cluster): string | null {
+  for (const place of cluster.places) {
+    const stop = store.stopPlaces[place]!;
+    if (stop.modes.includes('rail')) return stop.id;
+  }
+  return null;
+}
+
+export async function profilePlace(
   store: Store,
   index: DepartureIndex,
+  railBoards: RailBoards | null,
   lat: number,
   lon: number,
-): PlaceProfile {
+): Promise<PlaceProfile> {
   const scans: Scan[] = [];
   for (const cluster of clustersAround(store, lat, lon)) {
-    const scan = scanCluster(store, index, cluster);
+    const scan = collectCluster(store, index, cluster);
     if (scan) scans.push(scan);
+  }
+
+  if (railBoards) {
+    await Promise.all(
+      scans
+        .filter((scan) => scan.missing.has('rail'))
+        .map(async (scan) => {
+          const id = railMemberOf(store, scan.cluster);
+          if (!id) return;
+          const rail = await railBoards.scan(id);
+          if (rail) mergeRail(scan, rail);
+        }),
+    );
   }
 
   const found = scans.map((scan) => scan.stop);
@@ -389,9 +494,11 @@ export function profilePlace(
 
   const advertised = new Set<string>();
   const missing = new Set<string>();
-  for (const stop of core.length ? core.map((scan) => scan.stop) : found) {
-    for (const mode of stop.modes) advertised.add(mode);
-    for (const mode of stop.missingModes) missing.add(mode);
+  const live = new Set<string>();
+  for (const scan of core.length ? core : scans) {
+    for (const mode of scan.stop.modes) advertised.add(mode);
+    for (const mode of scan.stop.missingModes) missing.add(mode);
+    for (const mode of scan.stop.liveModes) live.add(mode);
   }
   const level: 'full' | 'partial' | 'none' =
     missing.size === 0 ? 'full' : missing.size >= advertised.size && advertised.size > 0 ? 'none' : 'partial';
@@ -465,6 +572,6 @@ export function profilePlace(
     },
     hourly,
     stops: pickStops(found, rail ? rail.stop : null),
-    coverage: { level, missing: [...missing] },
+    coverage: { level, missing: [...missing], live: [...live] },
   };
 }

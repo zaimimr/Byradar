@@ -155,14 +155,27 @@ function dayPulse(hourly: number[]): string {
 }
 
 function coverageNote(profile: PlaceProfile): string {
-  if (profile.coverage.level === 'full') return '';
-  const named = profile.coverage.missing.map((mode) => MODE_LABEL[mode].toLowerCase()).join(' og ');
-  return `<div class="veh__prov">
-    <span class="prov prov--missing">MANGLER</span>
-    <span>Rutetidene her dekker Ruter. ${
-      named ? `Avganger for ${named} er ikke tellet med i tallene` : 'Noen avganger er ikke tellet med'
-    }, så tilbudet er i praksis bedre enn poengsummen viser.</span>
-  </div>`;
+  const blocks: string[] = [];
+
+  if (profile.coverage.live.includes('rail')) {
+    blocks.push(`<div class="veh__prov">
+      <span class="prov prov--live">TOG</span>
+      <span>Togavgangene er hentet fra Entur for samme ukedag som rutetabellen, og teller med i frekvens,
+      bredde og kveld på samme måte som resten.</span>
+    </div>`);
+  }
+
+  if (profile.coverage.level !== 'full') {
+    const named = profile.coverage.missing.map((mode) => MODE_LABEL[mode].toLowerCase()).join(' og ');
+    blocks.push(`<div class="veh__prov">
+      <span class="prov prov--missing">MANGLER</span>
+      <span>Rutetidene her dekker Ruter og tog. ${
+        named ? `Avganger for ${named} er ikke tellet med i tallene` : 'Noen avganger er ikke tellet med'
+      }, så tilbudet er i praksis bedre enn poengsummen viser.</span>
+    </div>`);
+  }
+
+  return blocks.join('');
 }
 
 function summaryLine(profile: PlaceProfile): string {
