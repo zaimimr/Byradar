@@ -135,10 +135,11 @@ export async function notify(url: string, entry: FeedbackEntry): Promise<void> {
   if (entry.place) lines.push(`Sted: ${entry.place}`);
   if (entry.contact) lines.push(`Svar til: ${entry.contact}`);
   if (entry.view) lines.push(`Kart: https://byradar.no/#${entry.view}`);
-  await fetch(url, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ content: lines.join('\n'), text: lines.join('\n') }),
     signal: AbortSignal.timeout(5000),
   });
+  if (!res.ok) throw new Error(`webhook answered ${res.status}`);
 }
