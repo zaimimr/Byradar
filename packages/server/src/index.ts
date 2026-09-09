@@ -9,12 +9,15 @@ import type { WebSocket } from 'ws';
 
 import { guardHttp, isAdmin, isAllowedOrigin, socketOriginAllowed } from './access.js';
 import { RemoteBoards } from './boards.js';
+import { Commutes } from './commute.js';
 import { buildDepartureBoard, DepartureIndex, withRemoteDepartures } from './departures.js';
 import { DestinationResolver } from './destinations.js';
 import { Engine, type VehicleState } from './engine.js';
 import { startGpsPoller } from './entur.js';
 import { ENV, REPO_ROOT } from './env.js';
 import { FeedbackStore, notify, readDraft } from './feedback.js';
+import { Geocoder } from './geocode.js';
+import { profilePlace } from './place.js';
 import { isSkipped, startTripUpdatePoller } from './rt.js';
 import { EMPTY_SITUATIONS, startSituationPoller, type SituationSnapshot } from './situations.js';
 import { Store } from './store.js';
@@ -28,6 +31,8 @@ const departureIndex = DepartureIndex.build(store);
 const remoteBoards = new RemoteBoards(store.meta.serviceDate);
 const routeIds = new Set(store.routes.map((route) => route.id));
 const feedback = await FeedbackStore.open(ENV.feedbackDir, ENV.feedbackMaxBytes);
+const geocoder = new Geocoder(store.meta.bbox);
+const commutes = new Commutes();
 let situations: SituationSnapshot = EMPTY_SITUATIONS;
 let situationErrors = 0;
 
@@ -69,7 +74,15 @@ await app.register(rateLimit, {
   allowList: (req) => req.url === '/health' && isAdmin(req),
 });
 
-const GUARDED_PREFIXES = ['/data/', '/stops/', '/vehicles/', '/situations', '/feedback'];
+const GUARDED_PREFIXES = [
+  '/data/',
+  '/stops/',
+  '/vehicles/',
+  '/situations',
+  '/feedback',
+  '/geocode',
+  '/place',
+];
 
 app.addHook('onRequest', async (req, reply) => {
   if (!GUARDED_PREFIXES.some((prefix) => req.url.startsWith(prefix))) return;
@@ -244,6 +257,8 @@ app.get('/health', async (req) => {
     gps: engine.gpsInfo,
     destinations: destinations.stats,
     remoteBoards: remoteBoards.stats,
+    geocoder: geocoder.stats,
+    commutes: commutes.stats,
     situations: {
       count: situations.situations.length,
       updatedAt: situations.updatedAt,
@@ -299,6 +314,51 @@ app.get<{ Params: { stopPlaceId: string }; Querystring: { limit?: string } }>(
     return withRemoteDepartures(board, remote, board.stop.missingModes, limit);
   },
 );
+
+const PLACE_LOOKUP_LIMIT = 30;
+
+function readPoint(query: { lat?: string; lon?: string }): { lat: number; lon: number } | null {
+  const lat = Number(query.lat);
+  const lon = Number(query.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const bbox = store.meta.bbox;
+  if (lat < bbox.minLat || lat > bbox.maxLat || lon < bbox.minLon || lon > bbox.maxLon) return null;
+  return { lat, lon };
+}
+
+app.get<{ Querystring: { q?: string } }>('/geocode', {
+  config: { rateLimit: { max: PLACE_LOOKUP_LIMIT, timeWindow: ENV.rateLimitWindowMs } },
+}, async (req, reply) => {
+  const query = (req.query.q ?? '').trim();
+  if (!query) return { results: [] };
+  const hits = await geocoder.lookup(query);
+  if (hits === null) return reply.code(503).send({ error: 'adressesøket svarer ikke akkurat nå' });
+  reply.header('Cache-Control', 'private, max-age=120');
+  return { results: hits };
+});
+
+app.get<{ Querystring: { lat?: string; lon?: string } }>('/place', {
+  config: { rateLimit: { max: PLACE_LOOKUP_LIMIT, timeWindow: ENV.rateLimitWindowMs } },
+}, async (req, reply) => {
+  const point = readPoint(req.query);
+  if (!point) return reply.code(400).send({ error: 'punktet ligger utenfor kartutsnittet for Oslo' });
+  reply.header('Cache-Control', 'private, max-age=300');
+  return profilePlace(store, departureIndex, point.lat, point.lon);
+});
+
+app.get<{ Querystring: { lat?: string; lon?: string; to?: string } }>('/place/commute', {
+  config: { rateLimit: { max: PLACE_LOOKUP_LIMIT, timeWindow: ENV.rateLimitWindowMs } },
+}, async (req, reply) => {
+  const point = readPoint(req.query);
+  if (!point) return reply.code(400).send({ error: 'punktet ligger utenfor kartutsnittet for Oslo' });
+  const target = req.query.to ?? '';
+  const place = store.stopPlaceIdxById.get(target);
+  if (place === undefined) return reply.code(404).send({ error: 'ukjent stoppested' });
+  const stop = store.stopPlaces[place]!;
+  const commute = await commutes.trip(point.lat, point.lon, { id: stop.id, name: stop.name });
+  if (commute === null) return reply.code(503).send({ error: 'reiseplanleggeren svarer ikke akkurat nå' });
+  return commute;
+});
 
 const FEEDBACK_PAGE_LIMIT = 200;
 

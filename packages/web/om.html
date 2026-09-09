@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Om Byradar · datakilder og nøyaktighet</title>
+    <title>Om Byradar · datakilder, boligsjekk og nøyaktighet</title>
     <meta
       name="description"
-      content="Hvor Byradar henter sanntidsdataene fra, hvorfor de fleste posisjonene er beregnet og ikke målte, og hvem som har laget kartet."
+      content="Hvor Byradar henter sanntidsdataene fra, hvordan boligsjekken regner ut kollektivtilbudet på en adresse, og hvorfor de fleste posisjonene er beregnet og ikke målte."
     />
     <link rel="canonical" href="https://byradar.no/om" />
     <meta name="theme-color" content="#07090c" />
@@ -58,7 +58,8 @@
         <h1 class="doc__title">Om Byradar</h1>
         <p class="doc__lede">
           Byradar viser kollektivtrafikken i Oslo-området mens den kjører: T-bane, trikk, buss, båt og tog på ett
-          kart. Det er et hobbyprosjekt, ikke en offisiell tjeneste fra Ruter, Entur eller noe annet selskap.
+          kart. Er du på boligjakt, sjekker den også kollektivtilbudet på en adresse. Det er et hobbyprosjekt, ikke en
+          offisiell tjeneste fra Ruter, Entur eller noe annet selskap.
         </p>
       </header>
 
@@ -141,6 +142,47 @@
           Skal du faktisk rekke noe, bruk <a href="https://ruter.no" rel="noreferrer noopener">Ruter</a> eller
           <a href="https://entur.no" rel="noreferrer noopener">Entur</a>. Det er fasit.
         </p>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Boligsjekken</h2>
+        <p>
+          Skriv en adresse i søkefeltet, eller høyreklikk et sted i kartet, og Byradar regner ut hvor godt
+          kollektivtilbudet er akkurat der. Det er laget for deg som ser på en leilighet eller et hus og vil vite hva
+          hverdagen faktisk blir: hvor langt du går til stoppet, hvor ofte det går, og hvor lang tid du bruker til
+          jobb. Lenken i adressefeltet inneholder punktet, så du kan sende sjekken videre til den du ser på bolig med.
+        </p>
+        <p>Poengsummen går fra 0 til 100 og består av fem deler:</p>
+        <ul class="doc__list">
+          <li><strong>Nærhet</strong> (20 poeng) – gangavstand til nærmeste stopp med minst seks avganger i timen.</li>
+          <li>
+            <strong>Frekvens</strong> (30 poeng) – avganger i timen mellom kl. 07 og 09 fra stoppene innen ti minutters
+            gange. Hver linje telles én gang, i den retningen som går oftest, og vektes etter hvor langt du må gå.
+          </li>
+          <li><strong>Skinnegang</strong> (25 poeng) – hvor nær du er T-bane, trikk eller tog.</li>
+          <li><strong>Bredde</strong> (10 poeng) – hvor mange ulike linjer og transportmidler du kan velge mellom.</li>
+          <li><strong>Kveld</strong> (15 poeng) – hvor mange avganger som går etter kl. 23.</li>
+        </ul>
+        <p>
+          Reisetidene kommer fra Enturs reiseplanlegger og gjelder avreise kl. 08 neste hverdag, med gange i hver ende.
+          Du kan legge til dine egne målpunkter, for eksempel jobb eller skole.
+        </p>
+        <p>Det er noen forbehold du bør kjenne:</p>
+        <ul class="doc__list">
+          <li>
+            Tallene er tellet fra rutetabellen for den dagen dataene ble bygget. Er det en lørdag eller søndag, er
+            frekvensen lavere enn en vanlig hverdag.
+          </li>
+          <li>
+            Holdeplasstidene i datagrunnlaget dekker Ruter. Tog fra Vy, Flytoget og regionbusser teller ikke med i
+            frekvensen, men togstasjonen teller i skinnegang. Panelet sier fra når noe mangler.
+          </li>
+          <li>
+            Poengsummen måler tilbudet i nabolaget, ikke hvor sentralt du bor. Et knutepunkt langt ute kan få høy
+            score. Se reisetidene for å vurdere avstanden til byen.
+          </li>
+          <li>Gangavstand er luftlinje delt på 75 meter i minuttet, ikke faktisk gangvei. Bakker og elver teller ikke.</li>
+        </ul>
       </section>
 
       <section class="doc__section">

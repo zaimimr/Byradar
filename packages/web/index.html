@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Byradar · sanntidskart for kollektivtrafikken i Oslo</title>
+    <title>Byradar · sanntidskart og boligsjekk for Oslo</title>
     <meta
       name="description"
-      content="Se T-bane, trikk, buss, båt og tog bevege seg i Oslo i sanntid. Følg en avgang, søk opp en linje, og se når det går fra stoppet nærmest deg."
+      content="Se T-bane, trikk, buss, båt og tog bevege seg i Oslo i sanntid. Søk opp en adresse og få boligsjekk: stoppene i gangavstand, hvor ofte det går, og reisetid til jobb før du legger inn bud."
     />
     <link rel="canonical" href="https://byradar.no/" />
     <meta name="theme-color" content="#07090c" />
@@ -23,10 +23,10 @@
     <meta property="og:site_name" content="Byradar" />
     <meta property="og:locale" content="nb_NO" />
     <meta property="og:url" content="https://byradar.no/" />
-    <meta property="og:title" content="Byradar · sanntidskart for kollektivtrafikken i Oslo" />
+    <meta property="og:title" content="Byradar · sanntidskart og boligsjekk for Oslo" />
     <meta
       property="og:description"
-      content="Se T-bane, trikk, buss, båt og tog bevege seg i Oslo i sanntid."
+      content="Sanntidskart over kollektivtrafikken i Oslo, og boligsjekk på adressenivå: stopp i gangavstand, frekvens og reisetid til jobb."
     />
     <meta property="og:image" content="https://byradar.no/og.jpg" />
     <meta property="og:image:type" content="image/jpeg" />
@@ -37,10 +37,10 @@
       content="Mørkt kart over Oslo med farget kollektivnett og hundrevis av kjøretøy i bevegelse."
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Byradar · sanntidskart for kollektivtrafikken i Oslo" />
+    <meta name="twitter:title" content="Byradar · sanntidskart og boligsjekk for Oslo" />
     <meta
       name="twitter:description"
-      content="Se T-bane, trikk, buss, båt og tog bevege seg i Oslo i sanntid."
+      content="Sanntidskart over kollektivtrafikken i Oslo, og boligsjekk på adressenivå: stopp i gangavstand, frekvens og reisetid til jobb."
     />
     <meta name="twitter:image" content="https://byradar.no/og.jpg" />
 
@@ -53,7 +53,7 @@
         "applicationCategory": "TravelApplication",
         "operatingSystem": "Web",
         "inLanguage": "nb-NO",
-        "description": "Sanntidskart over kollektivtrafikken i Oslo: T-bane, trikk, buss, båt og tog.",
+        "description": "Sanntidskart over kollektivtrafikken i Oslo: T-bane, trikk, buss, båt og tog, med boligsjekk av kollektivtilbudet på en adresse.",
         "isAccessibleForFree": true,
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "NOK" },
         "author": { "@type": "Person", "name": "Zaim Imran", "url": "https://zaim.no" },
@@ -103,8 +103,8 @@
             autocomplete="off"
             autocapitalize="off"
             spellcheck="false"
-            placeholder="linje eller stopp"
-            aria-label="Søk etter linje eller stopp"
+            placeholder="linje, stopp eller adresse"
+            aria-label="Søk etter linje, stopp eller adresse"
             role="combobox"
             aria-expanded="false"
             aria-controls="search-results"
@@ -112,6 +112,11 @@
           />
           <kbd class="search__key" aria-hidden="true">/</kbd>
         </div>
+        <p class="search__hint">
+          skriv en adresse for <b>boligsjekk</b> ·
+          <span class="hint-mouse">eller høyreklikk i kartet</span>
+          <span class="hint-touch">eller hold fingeren på kartet</span>
+        </p>
         <div class="search__filter" id="search-filter" hidden></div>
         <div class="search__results" id="search-results" role="listbox" aria-label="Treff" hidden></div>
       </section>
@@ -166,7 +171,8 @@
         <h2>Byradar trenger JavaScript</h2>
         <p>
           Byradar er et sanntidskart over kollektivtrafikken i Oslo. Det tegner T-bane, trikk, buss, båt og tog mens
-          de kjører, med avgangstider fra stoppene rundt deg. Kartet krever JavaScript for å tegne seg.
+          de kjører, med avgangstider fra stoppene rundt deg, og en boligsjekk som viser kollektivtilbudet på en
+          adresse. Kartet krever JavaScript for å tegne seg.
         </p>
         <p><a href="/om">Les om hvor dataene kommer fra og hvor nøyaktige de er</a>.</p>
       </div>

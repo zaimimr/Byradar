@@ -1,5 +1,7 @@
 import { MODE_RAIL_ORDER } from './palette.js';
 import type { Fix } from './geo.js';
+import { DEFAULT_TARGETS } from './place.js';
+import type { CommuteTarget, PlacePin } from './place.js';
 import type { Mode, RouteMeta } from './types.js';
 
 export interface ViewState {
@@ -39,6 +41,9 @@ export interface AppState {
   selectedStop: string | null;
   stopAnchor: string | null;
   nearby: Fix | null;
+  place: PlacePin | null;
+  placeStops: Array<{ lat: number; lon: number }>;
+  targets: CommuteTarget[];
   line: LineFilter | null;
   follow: FollowState | null;
   fix: Fix | null;
@@ -101,6 +106,23 @@ function readHash(): Partial<AppState> {
   };
 }
 
+export function readHashPlace(): PlacePin | null {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const raw = params.get('p');
+  if (!raw) return null;
+  const [lat, lon] = raw.split(',').map(Number);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const label = params.get('pn')?.trim();
+  return { lat: lat!, lon: lon!, label: label || 'valgt punkt', detail: '' };
+}
+
+export function readHashTargetIds(): string[] {
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const raw = params.get('to');
+  if (!raw) return [];
+  return raw.split(',').map((id) => id.trim()).filter(Boolean).slice(0, 6);
+}
+
 export function readHashLineId(): string | null {
   const params = new URLSearchParams(location.hash.replace(/^#/, ''));
   return params.get('line');
@@ -132,6 +154,9 @@ export function createState(): AppState {
     selectedStop: null,
     stopAnchor: null,
     nearby: null,
+    place: null,
+    placeStops: [],
+    targets: [...DEFAULT_TARGETS],
     line: null,
     follow: null,
     fix: null,
@@ -161,6 +186,12 @@ export function syncHash(state: AppState): void {
     if (state.onlyDeviations) params.set('dev', '1');
     if (state.line) params.set('line', state.line.route.id);
     if (state.stopAnchor) params.set('stop', state.stopAnchor);
+    if (state.place) {
+      params.set('p', `${state.place.lat.toFixed(5)},${state.place.lon.toFixed(5)}`);
+      if (state.place.label) params.set('pn', state.place.label);
+    }
+    const extra = state.targets.filter((target) => !DEFAULT_TARGETS.some((base) => base.id === target.id));
+    if (extra.length) params.set('to', extra.map((target) => target.id).join(','));
     history.replaceState(null, '', `#${params.toString()}`);
   }, 220);
 }

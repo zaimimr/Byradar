@@ -2,7 +2,7 @@ const VERSION = 'byradar-v2';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
-const BYPASS = ['/live', '/vehicles/', '/stops/', '/health'];
+const BYPASS = ['/live', '/vehicles/', '/stops/', '/health', '/place', '/geocode'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

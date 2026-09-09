@@ -36,6 +36,11 @@ const LABEL_ZOOM = 14.2;
 const HALO_DELAY = 420;
 const FIX_COLOR: [number, number, number] = [88, 182, 221];
 const FIX_MIN_ACCURACY_M = 12;
+const PLACE_COLOR: [number, number, number] = [244, 196, 96];
+const WALK_METRES_PER_MIN = 75;
+const WALK_RING_MINUTES = [5, 10, 15];
+const RING_LABEL_ZOOM = 12.6;
+const METRES_PER_DEG_LAT = 111_320;
 
 export interface LayerInput {
   state: AppState;
@@ -118,8 +123,112 @@ function deviationGate(state: AppState, deviations: DeviationRoutes): boolean {
 
 export function buildLayers(input: LayerInput): Layer[] {
   const layers = buildMapLayers(input);
+  appendPlaceLayers(layers, input.state, input.zoom);
   appendFixLayers(layers, input.state);
   return layers;
+}
+
+function appendPlaceLayers(layers: Layer[], state: AppState, zoom: number): void {
+  const place = state.place;
+  if (!place) return;
+
+  const rings = WALK_RING_MINUTES.map((minutes) => ({ minutes, metres: minutes * WALK_METRES_PER_MIN }));
+
+  layers.push(
+    new ScatterplotLayer<(typeof rings)[number]>({
+      id: 'place-rings',
+      data: rings,
+      getPosition: () => [place.lon, place.lat],
+      getRadius: (d) => d.metres,
+      radiusUnits: 'meters',
+      stroked: true,
+      filled: false,
+      getLineColor: (d) => [...PLACE_COLOR, d.minutes === 5 ? 132 : d.minutes === 10 ? 92 : 62] as [number, number, number, number],
+      lineWidthUnits: 'pixels',
+      getLineWidth: 1,
+      lineWidthMinPixels: 1,
+      updateTriggers: { getPosition: [place.lat, place.lon] },
+      parameters: { depthCompare: 'always' },
+    }),
+  );
+
+  if (zoom >= RING_LABEL_ZOOM) {
+    layers.push(
+      new TextLayer<(typeof rings)[number]>({
+        id: 'place-ring-labels',
+        data: rings,
+        getPosition: (d) => [place.lon, place.lat + d.metres / METRES_PER_DEG_LAT],
+        getText: (d) => `${d.minutes} min`,
+        getSize: 9.5,
+        sizeUnits: 'pixels',
+        getColor: [...PLACE_COLOR, 210] as [number, number, number, number],
+        outlineColor: [8, 10, 14, 235],
+        outlineWidth: 3,
+        fontFamily: "'Martian Mono', ui-monospace, monospace",
+        fontWeight: 400,
+        fontSettings: { sdf: true, fontSize: 44, buffer: 6 },
+        characterSet: 'auto',
+        getTextAnchor: 'middle',
+        getAlignmentBaseline: 'bottom',
+        getPixelOffset: [0, -3],
+        updateTriggers: { getPosition: [place.lat, place.lon] },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+  }
+
+  if (state.placeStops.length) {
+    layers.push(
+      new ScatterplotLayer<{ lat: number; lon: number }>({
+        id: 'place-stops',
+        data: state.placeStops,
+        getPosition: (d) => [d.lon, d.lat],
+        getRadius: 8,
+        radiusUnits: 'pixels',
+        stroked: true,
+        filled: false,
+        getLineColor: [...PLACE_COLOR, 190] as [number, number, number, number],
+        lineWidthUnits: 'pixels',
+        getLineWidth: 1.6,
+        updateTriggers: { getPosition: state.placeStops.length },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+  }
+
+  layers.push(
+    new ScatterplotLayer<typeof place>({
+      id: 'place-glow',
+      data: [place],
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 15,
+      radiusUnits: 'pixels',
+      stroked: false,
+      filled: true,
+      getFillColor: [...PLACE_COLOR, 62] as [number, number, number, number],
+      updateTriggers: { getPosition: [place.lat, place.lon] },
+      parameters: { depthCompare: 'always' },
+    }),
+  );
+
+  layers.push(
+    new ScatterplotLayer<typeof place>({
+      id: 'place-pin',
+      data: [place],
+      pickable: true,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 7,
+      radiusUnits: 'pixels',
+      stroked: true,
+      filled: true,
+      getFillColor: [...PLACE_COLOR, 255] as [number, number, number, number],
+      getLineColor: [14, 17, 23, 255],
+      lineWidthUnits: 'pixels',
+      getLineWidth: 2.4,
+      updateTriggers: { getPosition: [place.lat, place.lon] },
+      parameters: { depthCompare: 'always' },
+    }),
+  );
 }
 
 function appendFixLayers(layers: Layer[], state: AppState): void {

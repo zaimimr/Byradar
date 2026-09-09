@@ -6,6 +6,7 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 
 ## What it shows
 
+- **Boligsjekk** on any address or map point: a 0-100 score for the transit on offer around it, the stops within walking distance with their weekday-morning frequency, the day's departure rhythm, and door-to-door travel times for a weekday 08:00 departure. Built for house hunting, and the URL carries the point so a check can be sent to someone else
 - **Feedback page** at `/tilbakemelding`, carrying the map view you came from so a report says where you were looking
 - **206 lines** in the Oslo core, drawn from real route geometry with each operator's own line colours
 - **~750-850 vehicles** in motion at peak, drawn two ways: zoomed out, an upright bubble carrying the mode pictogram, the line number and a small arrow for heading; past zoom 16.8, the vehicle's true-scale footprint aligned to the street
@@ -13,7 +14,7 @@ Inspired by [openbaarvervoerbelgie.be](https://openbaarvervoerbelgie.be), built 
 - **Vehicle inspector**: click any vehicle for its line, destination, live deviation and the next stops with scheduled vs. expected times
 - **City pulse**: bar height is how many vehicles are running, bar colour is how punctual the network is right now
 - **3D buildings** on tilt, extruded from real OSM heights via MapTiler's vector tiles
-- **Search** over every line and stop in one box, folding `æøå` so `majorstua` finds Majorstuen; picking a line filters the map to it, picking a stop opens its board
+- **Search** over every line, stop and Norwegian address in one box, folding `æøå` so `majorstua` finds Majorstuen; picking a line filters the map to it, picking a stop opens its board, picking an address opens the boligsjekk
 - **Departure boards** on any stop, merging live and scheduled departures across every quay that shares the stop's name
 - **Find my position**, with an accuracy circle and a readable message when the fix is denied, unavailable or outside Oslo
 - **Follow a vehicle**, which locks the camera to it and isolates its line so only that corridor stays drawn. Ends on a map drag, `Esc`, the button, or when the vehicle leaves traffic, and any line filter you had is put back

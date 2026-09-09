@@ -14,10 +14,22 @@ import { buildSearchIndex } from './search.js';
 import type { SearchIndex, StopGroup } from './search.js';
 import { nearestGroups } from './nearby.js';
 import type { NearbyStop } from './nearby.js';
+import { DEFAULT_TARGETS, geocode, placeCommute, placeProfile } from './place.js';
+import type { CommuteTarget, GeoHit, PlacePin } from './place.js';
+import type { PlaceView } from './placeview.js';
 import { NO_DEVIATIONS, deviationRoutes, loadSituations } from './situations.js';
 import type { DeviationRoutes } from './situations.js';
 import { buildVehicleSprites } from './sprites.js';
-import { createState, hashHasView, readHashLineId, readHashStopId, resetFilters, syncHash } from './state.js';
+import {
+  createState,
+  hashHasView,
+  readHashLineId,
+  readHashPlace,
+  readHashStopId,
+  readHashTargetIds,
+  resetFilters,
+  syncHash,
+} from './state.js';
 import type { LineFilter, PunctFilter, SourceFilter } from './state.js';
 import { secondsIntoServiceDay } from './time.js';
 import { Ui } from './ui.js';
@@ -44,6 +56,10 @@ const NEARBY_DEPARTURE_LIMIT = 3;
 const NEARBY_REFRESH_MS = 60_000;
 const SITUATION_REFRESH_MS = 180_000;
 const STOP_FLY_ZOOM = 15.4;
+const PLACE_FLY_ZOOM = 14.3;
+const MAX_TARGETS = 6;
+const LONG_PRESS_MS = 520;
+const LONG_PRESS_SLOP_PX = 12;
 const FOLLOW_ZOOM = 15.2;
 const FOLLOW_VIEWPORT_MAX_WAIT_MS = 1500;
 const COARSE_POINTER = window.matchMedia('(pointer: coarse)').matches;
@@ -73,6 +89,9 @@ let nearbyRefreshTimer: number | undefined;
 let nearbyToken = 0;
 let nearbyBoards: NearbyBoards = new Map();
 let deviations: DeviationRoutes = NO_DEVIATIONS;
+let placeView: PlaceView | null = null;
+let placeToken = 0;
+let addressAbort: AbortController | null = null;
 
 function serviceNowSec(): number {
   const serviceDate = liveServiceDate ?? meta?.serviceDate;
@@ -166,6 +185,23 @@ const ui = new Ui({
     });
     void openStop(item.group);
   },
+  onPickAddress: (hit: GeoHit) => {
+    void openPlace({
+      lat: hit.lat,
+      lon: hit.lon,
+      label: hit.name,
+      detail: [hit.locality, hit.kind].filter(Boolean).join(' · '),
+    });
+  },
+  onPickPlaceStop: (stopId: string) => {
+    const group = searchIndex?.groupByStopId.get(stopId);
+    if (!group) return;
+    stopFollow();
+    map.flyTo({ center: [group.lon, group.lat], zoom: Math.max(map.getZoom(), STOP_FLY_ZOOM), speed: 1.3 });
+    void openStop(group);
+  },
+  onAddTarget: (target: CommuteTarget) => addTarget(target),
+  searchAddress: (query: string) => lookupAddress(query),
   serviceNow: () => serviceNowSec(),
   onClearLine: () => {
     stopFollow();
@@ -188,8 +224,80 @@ function closeInspector(): void {
   state.selected = null;
   clearStop();
   clearNearby();
+  clearPlace();
   stopFollow();
   ui.hideInspector();
+}
+
+function clearPlace(): void {
+  placeToken++;
+  placeView = null;
+  state.place = null;
+  state.placeStops = [];
+  syncHash(state);
+}
+
+async function lookupAddress(query: string): Promise<GeoHit[]> {
+  addressAbort?.abort();
+  const controller = new AbortController();
+  addressAbort = controller;
+  return geocode(query, controller.signal);
+}
+
+async function loadCommute(token: number, target: CommuteTarget): Promise<void> {
+  const view = placeView;
+  if (!view) return;
+  view.commutes.set(target.id, { phase: 'loading' });
+  ui.renderPlace(view);
+  const commute = await placeCommute(view.pin, target);
+  if (token !== placeToken || placeView !== view) return;
+  view.commutes.set(target.id, commute ? { phase: 'ready', commute } : { phase: 'failed' });
+  ui.renderPlace(view);
+}
+
+function addTarget(target: CommuteTarget): void {
+  if (state.targets.some((existing) => existing.id === target.id)) return;
+  if (state.targets.length >= MAX_TARGETS) state.targets.splice(DEFAULT_TARGETS.length, 1);
+  state.targets.push(target);
+  syncHash(state);
+  if (!placeView) return;
+  ui.renderPlace(placeView);
+  void loadCommute(placeToken, target);
+}
+
+async function openPlace(pin: PlacePin, fly = true): Promise<void> {
+  state.selected = null;
+  clearStop();
+  clearNearby();
+  stopFollow();
+  state.place = pin;
+  state.placeStops = [];
+  syncHash(state);
+
+  const token = ++placeToken;
+  const view: PlaceView = {
+    pin,
+    profile: { phase: 'loading' },
+    targets: state.targets,
+    commutes: new Map(),
+  };
+  placeView = view;
+  ui.renderPlace(view);
+  if (fly) {
+    map.flyTo({ center: [pin.lon, pin.lat], zoom: Math.max(map.getZoom(), PLACE_FLY_ZOOM), speed: 1.3 });
+  }
+
+  const profile = await placeProfile(pin);
+  if (token !== placeToken || placeView !== view) return;
+  if (!profile) {
+    view.profile = { phase: 'failed' };
+    ui.renderPlace(view);
+    return;
+  }
+  view.profile = { phase: 'ready', profile };
+  state.placeStops = profile.stops.map((stop) => ({ lat: stop.lat, lon: stop.lon }));
+  ui.renderPlace(view);
+  await Promise.all(state.targets.map((target) => loadCommute(token, target)));
 }
 
 function clearStop(): void {
@@ -272,6 +380,54 @@ map.on('load', () => {
 
 map.on('dragstart', () => stopFollow());
 
+map.on('contextmenu', (event) => {
+  checkPoint(event.lngLat.lat, event.lngLat.lng);
+});
+
+function checkPoint(lat: number, lon: number): void {
+  void openPlace(
+    {
+      lat,
+      lon,
+      label: 'Punktet du valgte',
+      detail: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
+    },
+    false,
+  );
+}
+
+let pressTimer: number | undefined;
+let pressStart: { x: number; y: number } | null = null;
+
+function cancelPress(): void {
+  if (pressTimer !== undefined) clearTimeout(pressTimer);
+  pressTimer = undefined;
+  pressStart = null;
+}
+
+map.on('touchstart', (event) => {
+  if (event.points.length !== 1) {
+    cancelPress();
+    return;
+  }
+  const point = event.point;
+  pressStart = { x: point.x, y: point.y };
+  const { lat, lng } = event.lngLat;
+  pressTimer = window.setTimeout(() => {
+    pressTimer = undefined;
+    checkPoint(lat, lng);
+  }, LONG_PRESS_MS);
+});
+
+map.on('touchmove', (event) => {
+  if (!pressStart) return;
+  const moved = Math.hypot(event.point.x - pressStart.x, event.point.y - pressStart.y);
+  if (moved > LONG_PRESS_SLOP_PX) cancelPress();
+});
+
+map.on('touchend', () => cancelPress());
+map.on('touchcancel', () => cancelPress());
+
 const feedbackLink = document.getElementById('attrib-feedback') as HTMLAnchorElement | null;
 
 function carryViewToFeedback(): void {
@@ -342,6 +498,7 @@ async function loadStatic(): Promise<void> {
   ui.setSearchIndex(searchIndex);
   restoreLineFilter();
   restoreStop();
+  restorePlace();
   void trackSituations();
 }
 
@@ -363,6 +520,18 @@ function restoreStop(): void {
   if (!group) return;
   if (!hashHasView()) map.jumpTo({ center: [group.lon, group.lat], zoom: STOP_FLY_ZOOM });
   void openStop(group);
+}
+
+function restorePlace(): void {
+  for (const id of readHashTargetIds()) {
+    if (state.targets.some((target) => target.id === id)) continue;
+    const group = searchIndex?.groupByStopId.get(id);
+    if (group) state.targets.push({ id, name: group.name });
+  }
+  const pin = readHashPlace();
+  if (!pin) return;
+  if (!hashHasView()) map.jumpTo({ center: [pin.lon, pin.lat], zoom: PLACE_FLY_ZOOM });
+  void openPlace(pin, false);
 }
 
 function restoreLineFilter(): void {
@@ -565,6 +734,11 @@ function pickStopGroup(x: number, y: number): StopGroup | null {
   return searchIndex?.groupByStopId.get(stop.id) ?? null;
 }
 
+function pickPlacePin(x: number, y: number): boolean {
+  if (!state.place) return false;
+  return overlay.pickObject({ x, y, radius: STOP_PICK_RADIUS, layerIds: ['place-pin'] }) !== null;
+}
+
 function handleHover(info: PickingInfo): void {
   if (info.x === undefined || info.y === undefined) {
     ui.hideTooltip();
@@ -578,11 +752,16 @@ function handleHover(info: PickingInfo): void {
     return;
   }
   ui.hideTooltip();
-  map.getCanvas().style.cursor = pickStopGroup(info.x, info.y) ? 'pointer' : '';
+  const overStop = pickStopGroup(info.x, info.y) !== null || pickPlacePin(info.x, info.y);
+  map.getCanvas().style.cursor = overStop ? 'pointer' : '';
 }
 
 async function handleClick(info: PickingInfo): Promise<void> {
   if (info.x === undefined || info.y === undefined) return;
+  if (pickPlacePin(info.x, info.y)) {
+    if (placeView) ui.renderPlace(placeView);
+    return;
+  }
   const vehicle = pickVehicle(info.x, info.y);
   if (vehicle) {
     await selectVehicle(vehicle);

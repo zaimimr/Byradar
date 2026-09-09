@@ -9,9 +9,13 @@ import {
   formatServiceTime,
   punctuality,
 } from './palette.js';
+import { escapeHtml, textOn } from './html.js';
 import { formatDistance } from './nearby.js';
 import type { NearbyStop } from './nearby.js';
-import { flatten, search } from './search.js';
+import type { CommuteTarget, GeoHit } from './place.js';
+import { placeBody } from './placeview.js';
+import type { PlaceView } from './placeview.js';
+import { search } from './search.js';
 import { EMPTY_SITUATION_INDEX, situationsFor } from './situations.js';
 import type { SituationIndex } from './situations.js';
 import type { LineHit, SearchHit, SearchIndex, StopGroup, StopHit } from './search.js';
@@ -33,6 +37,8 @@ const ALERT_BODY_CHARS = 260;
 const ALERT_PEEK_CHARS = 64;
 const DAY_MS = 86_400_000;
 const FLASH_MS = 6000;
+const ADDRESS_DEBOUNCE_MS = 240;
+const MAX_TARGET_HITS = 5;
 const CROSSHAIR = `<svg class="rail__glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" stroke="none" /><circle cx="8" cy="8" r="5.6" fill="none" /><path d="M8 0.4v2.2M8 13.4v2.2M0.4 8h2.2M13.4 8h2.2" fill="none" /></svg>`;
 
 const RESET_GLYPH = `<svg class="rail__glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.75" fill="none" /><path d="M13.4 1.9v3.1h-3.1" fill="none" /></svg>`;
@@ -50,6 +56,18 @@ export type DeparturesState =
   | { phase: 'ready'; departures: Departure[]; coverage: Coverage };
 
 export type NearbyBoards = Map<string, DeparturesState>;
+
+interface AddressHit {
+  kind: 'address';
+  hit: GeoHit;
+}
+
+type AnyHit = SearchHit | AddressHit;
+
+interface HitSection {
+  title: string;
+  hits: AnyHit[];
+}
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -74,7 +92,11 @@ export interface UiCallbacks {
   onPickLine: (hit: LineHit) => void;
   onPickStop: (hit: StopHit) => void;
   onPickNearby: (item: NearbyStop) => void;
+  onPickAddress: (hit: GeoHit) => void;
+  onPickPlaceStop: (stopId: string) => void;
+  onAddTarget: (target: CommuteTarget) => void;
   onClearLine: () => void;
+  searchAddress: (query: string) => Promise<GeoHit[]>;
   serviceNow: () => number;
 }
 
@@ -95,8 +117,12 @@ export class Ui {
   private flashTimer: number | undefined;
   private searchIndex: SearchIndex | null = null;
   private situations: SituationIndex = EMPTY_SITUATION_INDEX;
-  private hits: SearchHit[] = [];
+  private hits: AnyHit[] = [];
   private activeHit = -1;
+  private addressQuery = '';
+  private addressHits: GeoHit[] = [];
+  private addressPending = false;
+  private addressTimer: number | undefined;
 
   constructor(private readonly callbacks: UiCallbacks) {
     this.buildRail();
@@ -355,31 +381,70 @@ export class Ui {
 
   private runSearch(): void {
     const input = el<HTMLInputElement>('search-input');
-    const panel = el<HTMLElement>('search-results');
-    if (!this.searchIndex || !input.value.trim()) {
+    const query = input.value.trim();
+    if (!this.searchIndex || !query) {
       this.hits = [];
       this.activeHit = -1;
+      this.addressQuery = '';
+      this.addressHits = [];
+      this.addressPending = false;
       this.closeResults();
       return;
     }
 
-    const results = search(this.searchIndex, input.value);
-    this.hits = flatten(results);
+    this.scheduleAddressLookup(query);
+    this.paintResults(query);
+  }
+
+  private scheduleAddressLookup(query: string): void {
+    if (query === this.addressQuery) return;
+    if (this.addressTimer !== undefined) clearTimeout(this.addressTimer);
+    this.addressPending = query.length >= 3;
+    this.addressTimer = window.setTimeout(() => {
+      this.addressTimer = undefined;
+      void this.callbacks.searchAddress(query).then((hits) => {
+        this.addressQuery = query;
+        this.addressHits = hits;
+        this.addressPending = false;
+        const current = el<HTMLInputElement>('search-input').value.trim();
+        if (current === query) this.paintResults(query);
+      });
+    }, ADDRESS_DEBOUNCE_MS);
+  }
+
+  private paintResults(query: string): void {
+    if (!this.searchIndex) return;
+    const input = el<HTMLInputElement>('search-input');
+    const panel = el<HTMLElement>('search-results');
+    const results = search(this.searchIndex, query);
+    const addresses: AddressHit[] = (this.addressQuery === query ? this.addressHits : []).map((hit) => ({
+      kind: 'address',
+      hit,
+    }));
+
+    const sections: HitSection[] = [];
+    const addressFirst = /\d/.test(query);
+    if (addressFirst && addresses.length) sections.push({ title: 'Adresser', hits: addresses });
+    if (results.lines.length) sections.push({ title: 'Linjer', hits: results.lines });
+    if (results.stops.length) sections.push({ title: 'Stopp', hits: results.stops });
+    if (!addressFirst && addresses.length) sections.push({ title: 'Adresser', hits: addresses });
+
+    this.hits = sections.flatMap((section) => section.hits);
     this.activeHit = this.hits.length ? 0 : -1;
 
     if (!this.hits.length) {
-      panel.innerHTML = '<p class="search__empty">ingen treff</p>';
+      panel.innerHTML = this.addressPending
+        ? '<p class="search__empty">søker&hellip;</p>'
+        : '<p class="search__empty">ingen treff</p>';
     } else {
-      const sections: string[] = [];
-      if (results.lines.length) {
-        sections.push('<p class="search__group">Linjer</p>');
-        sections.push(results.lines.map((hit) => this.lineRow(hit)).join(''));
-      }
-      if (results.stops.length) {
-        sections.push('<p class="search__group">Stopp</p>');
-        sections.push(results.stops.map((hit) => this.stopRow(hit)).join(''));
-      }
-      panel.innerHTML = sections.join('');
+      const markup = sections
+        .map(
+          (section) =>
+            `<p class="search__group">${section.title}</p>${section.hits.map((hit) => this.hitRow(hit)).join('')}`,
+        )
+        .join('');
+      const tail = this.addressPending ? '<p class="search__empty">søker adresser&hellip;</p>' : '';
+      panel.innerHTML = `${markup}${tail}`;
       for (const node of panel.querySelectorAll<HTMLButtonElement>('.search__hit')) {
         const at = Number(node.dataset.at);
         node.addEventListener('mousedown', (event) => event.preventDefault());
@@ -391,6 +456,22 @@ export class Ui {
     panel.hidden = false;
     input.setAttribute('aria-expanded', 'true');
     this.paintActiveHit();
+  }
+
+  private hitRow(hit: AnyHit): string {
+    if (hit.kind === 'line') return this.lineRow(hit);
+    if (hit.kind === 'stop') return this.stopRow(hit);
+    return this.addressRow(hit);
+  }
+
+  private addressRow(hit: AddressHit): string {
+    const at = this.hits.indexOf(hit);
+    const where = [hit.hit.locality, hit.hit.kind].filter(Boolean).join(' · ');
+    return `<button class="search__hit" type="button" role="option" aria-selected="false" data-at="${at}">
+      <span class="search__pin"></span>
+      <span class="search__hit-name">${escapeHtml(hit.hit.name)}</span>
+      <span class="search__hit-modes">${escapeHtml(where)}</span>
+    </button>`;
   }
 
   private lineRow(hit: LineHit): string {
@@ -438,11 +519,17 @@ export class Ui {
     const hit = this.hits[at];
     if (!hit) return;
     const input = el<HTMLInputElement>('search-input');
-    input.value = hit.kind === 'line' ? `${hit.route.line} ${hit.route.name}` : hit.group.name;
+    input.value =
+      hit.kind === 'line'
+        ? `${hit.route.line} ${hit.route.name}`
+        : hit.kind === 'stop'
+          ? hit.group.name
+          : hit.hit.name;
     input.blur();
     this.closeResults();
     if (hit.kind === 'line') this.callbacks.onPickLine(hit);
-    else this.callbacks.onPickStop(hit);
+    else if (hit.kind === 'stop') this.callbacks.onPickStop(hit);
+    else this.callbacks.onPickAddress(hit.hit);
   }
 
   private closeResults(): void {
@@ -813,6 +900,93 @@ export class Ui {
     panel.hidden = false;
   }
 
+  renderPlace(view: PlaceView): void {
+    const panel = el<HTMLElement>('inspector');
+    const first = panel.dataset.view !== 'place';
+    panel.dataset.view = 'place';
+    if (first) this.resetSheet();
+    const body = el<HTMLElement>('inspector-body');
+    const dest = document.getElementById('place-dest') as HTMLInputElement | null;
+    const carried = dest ? { value: dest.value, focused: document.activeElement === dest } : null;
+
+    body.innerHTML = placeBody(view);
+
+    for (const node of body.querySelectorAll<HTMLButtonElement>('.place__stop')) {
+      const id = node.dataset.stop;
+      if (!id) continue;
+      node.addEventListener('click', () => this.callbacks.onPickPlaceStop(id));
+    }
+
+    this.wireTargetPicker(carried);
+    panel.hidden = false;
+  }
+
+  private wireTargetPicker(carried: { value: string; focused: boolean } | null): void {
+    const input = document.getElementById('place-dest') as HTMLInputElement | null;
+    const results = document.getElementById('place-dest-results');
+    if (!input || !results) return;
+
+    if (carried) {
+      input.value = carried.value;
+      if (carried.focused) input.focus();
+    }
+
+    const close = (): void => {
+      results.hidden = true;
+      results.innerHTML = '';
+    };
+
+    const paint = (): void => {
+      const query = input.value.trim();
+      if (!this.searchIndex || !query) {
+        close();
+        return;
+      }
+      const stops = search(this.searchIndex, query).stops.slice(0, MAX_TARGET_HITS);
+      if (!stops.length) {
+        results.innerHTML = '<p class="search__empty">ingen stopp</p>';
+        results.hidden = false;
+        return;
+      }
+      results.innerHTML = stops
+        .map((hit, at) => {
+          const primary = hit.group.modes[0] ?? 'other';
+          return `<button class="search__hit" type="button" data-at="${at}">
+            <span class="search__node" style="--c:${MODE_SWATCH[primary]}"></span>
+            <span class="search__hit-name">${escapeHtml(hit.group.name)}</span>
+            <span class="search__hit-modes">${escapeHtml(hit.group.modes.map((m) => MODE_SHORT[m]).join('·'))}</span>
+          </button>`;
+        })
+        .join('');
+      results.hidden = false;
+      for (const node of results.querySelectorAll<HTMLButtonElement>('.search__hit')) {
+        const at = Number(node.dataset.at);
+        node.addEventListener('mousedown', (event) => event.preventDefault());
+        node.addEventListener('click', () => {
+          const hit = stops[at];
+          const anchor = hit?.group.members[0];
+          if (!hit || !anchor) return;
+          input.value = '';
+          close();
+          this.callbacks.onAddTarget({ id: anchor.id, name: hit.group.name });
+        });
+      }
+    };
+
+    input.addEventListener('input', paint);
+    input.addEventListener('focus', paint);
+    input.addEventListener('blur', () => window.setTimeout(() => {
+      if (document.activeElement !== input) close();
+    }, 140));
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      input.value = '';
+      close();
+      input.blur();
+    });
+  }
+
   hideInspector(): void {
     el<HTMLElement>('inspector').hidden = true;
   }
@@ -974,17 +1148,4 @@ function countdownText(expected: number, now: number, fallback: string): string 
 
 function countAttrs(expected: number, fallback: string): string {
   return `data-count="${expected.toFixed(0)}" data-fallback="${escapeHtml(fallback)}"`;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-}
-
-function textOn(hex: string): string {
-  const n = parseInt(hex.replace('#', ''), 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.62 ? '#0b0e13' : '#ffffff';
 }

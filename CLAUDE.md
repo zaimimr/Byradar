@@ -45,7 +45,8 @@ The nightly systemd timer already rebuilds the data at 04:45 Oslo time, so a nor
 
 - Images are pinned to `linux/amd64`. Build on the box, not on the Mac, where it emulates.
 - `VITE_MAPTILER_KEY` is baked in at image build time. Changing it means a rebuild, not a restart.
-- API routes live at the domain root: `/health`, `/vehicles/:vid`, `/stops/:stopPlaceId/departures`, `/situations`, `/feedback`, `/live`. There is no `/api` prefix.
+- API routes live at the domain root: `/health`, `/vehicles/:vid`, `/stops/:stopPlaceId/departures`, `/situations`, `/feedback`, `/live`, `/geocode`, `/place`, `/place/commute`. There is no `/api` prefix.
+- `/geocode` proxies Enturs geocoder and `/place/commute` proxies Journey Planner, both with their own cache and circuit breaker. `/place` is pure local computation over the ingested timetable, so it stays fast. All three are same-origin guarded and rate limited to 30 requests per minute per IP.
 - Rider feedback lands in `data/feedback/feedback.jsonl` on the `data` volume. Read it with `GET /feedback` as admin (loopback on the box, or `ADMIN_TOKEN` bearer). `refresh-data.sh` only swaps `data/server` and `data/web`, so the file survives a rebuild.
 - After midnight Oslo, `serviceDate` trailing the calendar date by one day is correct. Night service belongs to the previous service day.
 - `refresh-data.sh` stages a generation and rolls back on failure, so a failed rebuild never reaches live data.

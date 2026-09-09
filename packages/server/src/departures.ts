@@ -105,6 +105,10 @@ export class DepartureIndex {
     return lo;
   }
 
+  startOf(place: number): number {
+    return this.offsets[place]!;
+  }
+
   endOf(place: number): number {
     return this.offsets[place + 1]!;
   }
