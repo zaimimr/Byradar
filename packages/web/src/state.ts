@@ -51,11 +51,11 @@ export interface AppState {
 }
 
 const PHONE_QUERY = '(max-width: 620px)';
-const PHONE_ZOOM = 4.0;
+const PHONE_ZOOM = 3.9;
 
 const DEFAULT_VIEW: ViewState = {
-  longitude: 13.5,
-  latitude: 64.6,
+  longitude: 11.5,
+  latitude: 65.0,
   zoom: 4.4,
   pitch: 0,
   bearing: 0,
