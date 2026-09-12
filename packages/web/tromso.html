@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="nb" class="doc-page">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sanntidskart for bussene i Tromsø · Byradar</title>
+    <meta name="description" content="Følg bussene og hurtigbåtene i Tromsø i sanntid, med ekte GPS fra Troms fylkestrafikk. Avganger fra stoppene rundt deg, og boligsjekk på adressenivå." />
+    <link rel="canonical" href="https://byradar.no/tromso" />
+    <meta name="theme-color" content="#07090c" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Byradar" />
+    <meta property="og:locale" content="nb_NO" />
+    <meta property="og:url" content="https://byradar.no/tromso" />
+    <meta property="og:title" content="Sanntidskart for bussene i Tromsø · Byradar" />
+    <meta property="og:description" content="Følg bussene og hurtigbåtene i Tromsø i sanntid, med ekte GPS fra Troms fylkestrafikk. Avganger fra stoppene rundt deg, og boligsjekk på adressenivå." />
+    <meta property="og:image" content="https://byradar.no/og.jpg" />
+    <meta property="og:image:width" content="2400" />
+    <meta property="og:image:height" content="1260" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sanntidskart for bussene i Tromsø · Byradar" />
+    <meta name="twitter:description" content="Følg bussene og hurtigbåtene i Tromsø i sanntid, med ekte GPS fra Troms fylkestrafikk. Avganger fra stoppene rundt deg, og boligsjekk på adressenivå." />
+    <meta name="twitter:image" content="https://byradar.no/og.jpg" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "Sanntidskart for bussene i Tromsø",
+        "url": "https://byradar.no/tromso",
+        "inLanguage": "nb-NO",
+        "description": "Følg bussene og hurtigbåtene i Tromsø i sanntid, med ekte GPS fra Troms fylkestrafikk. Avganger fra stoppene rundt deg, og boligsjekk på adressenivå.",
+        "about": { "@type": "City", "name": "Tromsø" },
+        "isPartOf": { "@type": "WebSite", "name": "Byradar", "url": "https://byradar.no/" }
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400..700;1,400..700&family=Martian+Mono:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <svg class="grain" aria-hidden="true">
+      <filter id="grain-filter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.86" numOctaves="3" stitchTiles="stitch" />
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#grain-filter)" />
+    </svg>
+
+    <main class="doc">
+      <header class="doc__head">
+        <a class="doc__back" href="/">tilbake til kartet</a>
+        <div class="doc__mark" aria-hidden="true">
+          <span class="masthead__bar" style="--c: #ec700c"></span>
+          <span class="masthead__bar" style="--c: #0b91ef"></span>
+          <span class="masthead__bar" style="--c: #e60000"></span>
+          <span class="masthead__bar" style="--c: #354f7f"></span>
+        </div>
+        <h1 class="doc__title">Sanntidskart for bussene i Tromsø</h1>
+        <p class="doc__lede">Byradar viser Troms fylkestrafikk sitt nett i Tromsø mens det kjører: bybussene over broa og gjennom tunnelene, regionbussene, og hurtigbåtene nordover og sørover langs kysten.</p>
+        <p><a class="doc__strong" href="/#lon=18.9553&amp;lat=69.6492&amp;z=12.6">Åpne kartet over Tromsø →</a></p>
+      </header>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Hva kartet viser</h2>
+        <p>
+          Innenfor 8 kilometer fra sentrum ligger det rundt 250
+          stoppesteder med avganger i rutetabellen, med buss og båt. Hvert kjøretøy tegnes med
+          transportmiddel, retning og hvor presist det ligger an: blå ring betyr før tiden, grønn innenfor tre
+          minutter, gul tre til sju, rød over sju minutter sen.
+        </p>
+        <p>Tromsø har ingen jernbane, så buss og båt er hele kollektivtilbudet. Det gjør kartet enkelt å lese: alt som beveger seg er enten en buss eller en båt.</p>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Målt eller beregnet</h2>
+        <p>Troms fylkestrafikk deler faktiske posisjoner, så bussene på kartet er målt. Kjøretøy merket GPS kommer rett fra vognen; de som mangler signal beregnes fra rutetabellen og merkes EST.</p>
+        <p>
+          Rutetabellen er Troms fylkestrafikk sin egen, hentet fra
+          <a href="https://developer.entur.org" rel="noreferrer noopener">Enturs</a> nasjonale eksport og bygget om
+          hver natt. <a href="/om">Mer om datakildene og nøyaktigheten</a>.
+        </p>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Travle stopp i Tromsø</h2>
+        <p>Stoppestedene med flest avganger i rutetabellen. Klikk for å åpne avgangstavla på kartet.</p>
+        <ul class="doc__list">
+          <li>
+            <a href="/#stop=NSR%3AStopPlace%3A53442">Skippergata</a>
+            <span class="doc__muted">buss</span>
+          </li>
+          <li>
+            <a href="/#stop=NSR%3AStopPlace%3A55902">Giæverbukta bussterminal</a>
+            <span class="doc__muted">buss</span>
+          </li>
+          <li>
+            <a href="/#stop=NSR%3AStopPlace%3A56592">Petersborggata</a>
+            <span class="doc__muted">buss</span>
+          </li>
+          <li>
+            <a href="/#stop=NSR%3AStopPlace%3A52099">Torgsenteret</a>
+            <span class="doc__muted">buss</span>
+          </li>
+          <li>
+            <a href="/#stop=NSR%3AStopPlace%3A52957">Seminarbakken</a>
+            <span class="doc__muted">buss</span>
+          </li>
+          <li>
+            <a href="/#stop=NSR%3AStopPlace%3A53920">Skognesvegen</a>
+            <span class="doc__muted">buss</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Boligsjekk i Tromsø</h2>
+        <p>
+          Skriv en adresse i Tromsø i søkefeltet, eller hold fingeren på kartet, så regner Byradar ut
+          hvor godt kollektivtilbudet er akkurat der: stoppene i gangavstand, hvor ofte det faktisk går i rushet,
+          hvor mange linjer og transportmidler du når, og reisetiden til et sted du velger selv.
+        </p>
+        <p><a class="doc__strong" href="/#lon=18.9553&amp;lat=69.6492&amp;z=12.6">Prøv boligsjekken i Tromsø →</a></p>
+      </section>
+
+      <section class="doc__section">
+        <h2 class="doc__h">Andre byer</h2>
+        <p><a href="/oslo">Oslo</a>, <a href="/bergen">Bergen</a>, <a href="/trondheim">Trondheim</a>, <a href="/stavanger">Stavanger</a>, <a href="/kristiansand">Kristiansand</a>, <a href="/drammen">Drammen</a>, <a href="/alesund">Ålesund</a></p>
+      </section>
+
+      <footer class="doc__foot">
+        <a href="/">← kartet</a>
+      </footer>
+    </main>
+
+    <script type="module" src="/src/analytics.ts"></script>
+  </body>
+</html>
