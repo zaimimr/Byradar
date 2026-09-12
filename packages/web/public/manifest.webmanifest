@@ -1,8 +1,8 @@
 {
-  "name": "Byradar · sanntid i Oslo",
+  "name": "Byradar · sanntid i Norge",
   "short_name": "Byradar",
-  "description": "Live kart over kollektivtrafikken i Oslo: T-bane, trikk, buss, båt og tog.",
-  "lang": "no",
+  "description": "Live kart over kollektivtrafikken i hele Norge: buss, T-bane, trikk, tog og båt.",
+  "lang": "nb",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
