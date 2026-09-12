@@ -1,27 +1,44 @@
-export const OSLO_BBOX = {
-  minLat: 59.79,
-  maxLat: 60.14,
-  minLon: 10.45,
-  maxLon: 11.0,
+export const NORWAY_BBOX = {
+  minLat: 57.6,
+  maxLat: 71.4,
+  minLon: 4.0,
+  maxLon: 31.6,
 } as const;
 
-export type Bbox = typeof OSLO_BBOX;
+export type Bbox = typeof NORWAY_BBOX;
 
 export interface GtfsSource {
-  codespace: string;
+  id: string;
   url: string;
-  interpolate: boolean;
 }
 
 const OUTBOUND = 'https://storage.googleapis.com/marduk-production/outbound/gtfs';
 
 export const GTFS_SOURCES: readonly GtfsSource[] = [
-  { codespace: 'RUT', url: `${OUTBOUND}/rb_rut-aggregated-gtfs.zip`, interpolate: true },
-  { codespace: 'VYG', url: `${OUTBOUND}/rb_vyg-aggregated-gtfs.zip`, interpolate: false },
-  { codespace: 'FLT', url: `${OUTBOUND}/rb_flt-aggregated-gtfs.zip`, interpolate: false },
-  { codespace: 'OST', url: `${OUTBOUND}/rb_ost-aggregated-gtfs.zip`, interpolate: false },
-  { codespace: 'NBU', url: `${OUTBOUND}/rb_nbu-aggregated-gtfs.zip`, interpolate: false },
+  { id: 'norway', url: `${OUTBOUND}/rb_norway-aggregated-gtfs.zip` },
 ];
+
+export const TILE_LON = 0.5;
+export const TILE_LAT = 0.25;
+
+export const TILED_MODES: ReadonlySet<Mode> = new Set<Mode>(['bus', 'other']);
+
+export const SERVER_SHAPE_TOLERANCE_M = 4;
+
+export const COORD_SCALE = 1e6;
+
+export function tileXOf(lon: number): number {
+  return Math.floor((lon - NORWAY_BBOX.minLon) / TILE_LON);
+}
+
+export function tileYOf(lat: number): number {
+  return Math.floor((lat - NORWAY_BBOX.minLat) / TILE_LAT);
+}
+
+export function codespaceOf(id: string): string {
+  const at = id.indexOf(':');
+  return at > 0 ? id.slice(0, at) : 'UNK';
+}
 
 export type Mode = 'metro' | 'tram' | 'rail' | 'bus' | 'ferry' | 'other';
 

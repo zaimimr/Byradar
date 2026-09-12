@@ -1,6 +1,7 @@
 import { ENTUR, ENV } from './env.js';
 
 const NEGATIVE_TTL_MS = 30 * 60_000;
+const MAX_QUEUE = 500;
 const MAX_INFLIGHT = 4;
 const QUERY_SPACING_MS = 400;
 
@@ -69,6 +70,7 @@ export class DestinationResolver {
 
   private enqueue(journeyId: string): void {
     if (this.pending.has(journeyId)) return;
+    if (this.queue.length >= MAX_QUEUE) return;
     const failed = this.failedAt.get(journeyId);
     if (failed !== undefined && Date.now() - failed < NEGATIVE_TTL_MS) return;
     this.pending.add(journeyId);

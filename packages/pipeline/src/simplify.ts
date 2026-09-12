@@ -66,6 +66,86 @@ export function simplifyLonLat(points: ReadonlyArray<readonly [number, number]>,
   return out;
 }
 
+export function simplifyTriples(
+  data: Float64Array,
+  offset: number,
+  count: number,
+  toleranceMeters: number,
+): Uint8Array {
+  const keep = new Uint8Array(count);
+  if (count <= 2) {
+    keep.fill(1);
+    return keep;
+  }
+  const lat = (i: number): number => data[(offset + i) * 3 + 1]!;
+  const lon = (i: number): number => data[(offset + i) * 3 + 2]!;
+  const lonScale = Math.cos((lat(count >> 1) * Math.PI) / 180);
+  const tol = toleranceMeters / EARTH_M_PER_DEG;
+  const tolSq = tol * tol;
+
+  keep[0] = 1;
+  keep[count - 1] = 1;
+  const stack: Array<[number, number]> = [[0, count - 1]];
+
+  while (stack.length) {
+    const [first, last] = stack.pop()!;
+    if (last - first < 2) continue;
+    let maxSq = -1;
+    let maxIdx = -1;
+    for (let i = first + 1; i < last; i++) {
+      const d = perpendicularDistanceSq(
+        lon(i) * lonScale, lat(i),
+        lon(first) * lonScale, lat(first),
+        lon(last) * lonScale, lat(last),
+      );
+      if (d > maxSq) {
+        maxSq = d;
+        maxIdx = i;
+      }
+    }
+    if (maxSq > tolSq && maxIdx > 0) {
+      keep[maxIdx] = 1;
+      stack.push([first, maxIdx], [maxIdx, last]);
+    }
+  }
+
+  return keep;
+}
+
+export function splitByCell(
+  path: ReadonlyArray<readonly [number, number]>,
+  cellOf: (lon: number, lat: number) => number,
+): Map<number, Array<Array<[number, number]>>> {
+  const out = new Map<number, Array<Array<[number, number]>>>();
+  if (path.length < 2) return out;
+
+  const push = (cell: number, run: Array<[number, number]>): void => {
+    if (run.length < 2) return;
+    const runs = out.get(cell);
+    if (runs) runs.push(run);
+    else out.set(cell, [run]);
+  };
+
+  let cell = cellOf(path[0]![0], path[0]![1]);
+  let run: Array<[number, number]> = [[path[0]![0], path[0]![1]]];
+
+  for (let i = 1; i < path.length; i++) {
+    const point: [number, number] = [path[i]![0], path[i]![1]];
+    const next = cellOf(point[0], point[1]);
+    if (next === cell) {
+      run.push(point);
+      continue;
+    }
+    run.push(point);
+    push(cell, run);
+    cell = next;
+    run = [[path[i - 1]![0], path[i - 1]![1]], point];
+  }
+  push(cell, run);
+
+  return out;
+}
+
 export function clipRunsToBbox(
   points: ReadonlyArray<readonly [number, number]>,
   bbox: { minLat: number; maxLat: number; minLon: number; maxLon: number },

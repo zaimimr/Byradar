@@ -51,7 +51,7 @@ export function isSkipped(series: DelaySeries, seq: number): boolean {
   return idx >= 0 && series.skipped[idx] === 1;
 }
 
-export async function fetchTripUpdates(codespacePrefix: string): Promise<RtSnapshot> {
+export async function fetchTripUpdates(keep: (tripId: string) => boolean): Promise<RtSnapshot> {
   const started = Date.now();
   const res = await fetch(ENTUR.tripUpdates, {
     headers: { 'ET-Client-Name': ENV.clientName },
@@ -61,13 +61,12 @@ export async function fetchTripUpdates(codespacePrefix: string): Promise<RtSnaps
   const feed = FeedMessage.decode(buf);
 
   const byTrip = new Map<string, DelaySeries>();
-  const prefix = `${codespacePrefix}:`;
 
   for (const entity of feed.entity) {
     const tu = entity.tripUpdate;
     if (!tu?.trip?.tripId) continue;
     const tripId = tu.trip.tripId;
-    if (!tripId.startsWith(prefix)) continue;
+    if (!keep(tripId)) continue;
 
     const updates = tu.stopTimeUpdate ?? [];
     const n = updates.length;
@@ -110,7 +109,7 @@ export async function fetchTripUpdates(codespacePrefix: string): Promise<RtSnaps
 }
 
 export function startTripUpdatePoller(opts: {
-  codespacePrefix: string;
+  keep: (tripId: string) => boolean;
   intervalMs: number;
   onSnapshot: (snap: RtSnapshot) => void;
   onError: (err: unknown) => void;
@@ -120,7 +119,7 @@ export function startTripUpdatePoller(opts: {
 
   const cycle = async (): Promise<void> => {
     try {
-      const snap = await fetchTripUpdates(opts.codespacePrefix);
+      const snap = await fetchTripUpdates(opts.keep);
       if (!stopped) opts.onSnapshot(snap);
     } catch (err) {
       if (!stopped) opts.onError(err);

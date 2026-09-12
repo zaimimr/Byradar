@@ -40,6 +40,7 @@ export interface DataMeta {
   generatedAt: string;
   serviceDate: string;
   bbox: { minLat: number; maxLat: number; minLon: number; maxLon: number };
+  coordScale: number;
   counts: Record<string, number>;
   modes: string[];
 }
@@ -52,8 +53,14 @@ export const CALL_DIST = 3;
 export const CALL_QUAY = 4;
 
 export const SHAPE_STRIDE = 3;
+export const COORD_SCALE = 1e6;
 
 export const NO_STOP_PLACE = -1;
+
+function asInt32(buf: Buffer): Int32Array {
+  const aligned = buf.byteOffset % 4 === 0 ? buf : Buffer.from(buf);
+  return new Int32Array(aligned.buffer, aligned.byteOffset, aligned.byteLength / 4);
+}
 
 interface QuaysFile {
   ids: string[];
@@ -67,12 +74,12 @@ export class Store {
     readonly meta: DataMeta,
     readonly routes: RouteMeta[],
     readonly shapes: ShapeMeta[],
-    readonly shapeData: Float64Array,
+    readonly shapeData: Int32Array,
     readonly trips: TripMeta[],
-    readonly callData: Float64Array,
+    readonly callData: Int32Array,
     readonly quayNames: string[],
     readonly tripById: Map<string, number>,
-    readonly window: { firstDep: Float64Array; lastArr: Float64Array },
+    readonly window: { firstDep: Int32Array; lastArr: Int32Array },
     readonly journeyHeadsigns: ReadonlyMap<string, string>,
     readonly stopPlaces: StopPlaceMeta[],
     readonly stopPlaceIdxById: ReadonlyMap<string, number>,
@@ -97,14 +104,12 @@ export class Store {
     const quays = await read<QuaysFile>('quays.json');
     const stopPlaces = await readOptional<StopPlaceMeta[]>('stops.json', []);
 
-    const shapeBuf = await readFile(join(dir, 'shapes.bin'));
-    const callBuf = await readFile(join(dir, 'trips.bin'));
-    const shapeData = new Float64Array(shapeBuf.buffer, shapeBuf.byteOffset, shapeBuf.byteLength / 8);
-    const callData = new Float64Array(callBuf.buffer, callBuf.byteOffset, callBuf.byteLength / 8);
+    const shapeData = asInt32(await readFile(join(dir, 'shapes.bin')));
+    const callData = asInt32(await readFile(join(dir, 'trips.bin')));
 
     const tripById = new Map<string, number>();
-    const firstDep = new Float64Array(trips.length);
-    const lastArr = new Float64Array(trips.length);
+    const firstDep = new Int32Array(trips.length);
+    const lastArr = new Int32Array(trips.length);
     for (let i = 0; i < trips.length; i++) {
       const t = trips[i]!;
       tripById.set(t.id, i);

@@ -55,14 +55,28 @@ const GPS_CODESPACE_MODE_COLOR: Record<string, string> = {
   VYG: '#1B7A5A',
   VYX: '#1B7A5A',
   VYB: '#1B7A5A',
+  VYS: '#1B7A5A',
+  GOA: '#1B7A5A',
+  SJN: '#1B7A5A',
   FLT: '#B4145A',
   FLI: '#B4145A',
   OST: '#00778B',
   BRA: '#0F7BBF',
   NBU: '#5C4B9E',
   INN: '#C2571A',
-  SKY: '#0F7BBF',
-  GOA: '#1B7A5A',
+  SKY: '#C8102E',
+  KOL: '#00843D',
+  ATB: '#009BD9',
+  AKT: '#E4002B',
+  TRO: '#0F4C81',
+  MOR: '#005AA7',
+  NOR: '#D6001C',
+  FIN: '#7A1FA2',
+  VKT: '#00857D',
+  TEL: '#00857D',
+  VOT: '#00857D',
+  NWY: '#F07C00',
+  UNI: '#F07C00',
 };
 
 const MODE_FALLBACK_COLOR: Record<string, string> = {
@@ -175,6 +189,11 @@ export class Engine {
     const bySource: Record<VehicleSource, number> = { gps: 0, rt: 0, sched: 0 };
     const byMode: Record<string, number> = {};
 
+    const liveTrips = new Set<string>();
+    for (const v of this.gps) {
+      if (v.journeyId && store.tripById.has(v.journeyId)) liveTrips.add(v.journeyId);
+    }
+
     for (let i = 0; i < store.trips.length; i++) {
       const firstDep = store.window.firstDep[i]!;
       const lastArr = store.window.lastArr[i]!;
@@ -182,6 +201,7 @@ export class Engine {
       if (nowSec > lastArr + WINDOW_TRAIL_SEC + MAX_MODELLED_DELAY_SEC) continue;
 
       const trip = store.trips[i]!;
+      if (liveTrips.has(trip.id)) continue;
       const series = this.rt.byTrip.get(trip.id);
       if (series?.cancelled) continue;
 
@@ -230,33 +250,47 @@ export class Engine {
     }
 
     for (const v of this.gps) {
-      const vid = this.vidFor(v.key);
+      const tripIdx = v.journeyId ? store.tripById.get(v.journeyId) : undefined;
+      const trip = tripIdx === undefined ? undefined : store.trips[tripIdx];
+      const route = trip ? store.routes[trip.r] : undefined;
+      const key = v.journeyId ?? v.key;
+      const vid = this.vidFor(key);
       seen.add(vid);
-      const color = GPS_CODESPACE_MODE_COLOR[v.codespace] ?? MODE_FALLBACK_COLOR[v.mode] ?? '#8892A6';
+
+      const scheduled =
+        tripIdx === undefined
+          ? null
+          : this.placeTrip(tripIdx, nowSec, this.rt.byTrip.get(trip!.id) ?? null);
+      const totalDist = tripIdx === undefined ? 0 : store.call(tripIdx, trip!.n - 1, CALL_DIST);
+      const mode = route?.mode ?? v.mode;
+      const color =
+        route?.color ?? GPS_CODESPACE_MODE_COLOR[v.codespace] ?? MODE_FALLBACK_COLOR[v.mode] ?? '#8892A6';
+
       const previous = this.current.get(vid);
       const state: VehicleState = {
         vid,
-        key: v.key,
+        key,
         source: 'gps',
-        routeIdx: -1,
-        line: v.line,
-        mode: v.mode,
+        routeIdx: trip ? trip.r : -1,
+        line: v.line || route?.line || '',
+        mode,
         color,
-        headsign: this.destinations.resolve(v.journeyId, v.destination || v.lineName || ''),
+        headsign:
+          v.destination || trip?.h || this.destinations.resolve(v.journeyId, v.lineName || ''),
         lat: v.lat,
         lon: v.lon,
         bearing: v.bearing ?? previous?.bearing ?? 0,
         delay: v.delay,
-        atStop: false,
-        progress: 0,
-        nextStop: '',
-        tripId: null,
+        atStop: scheduled?.atStop ?? false,
+        progress: scheduled && totalDist > 0 ? Math.min(1, Math.max(0, scheduled.dist / totalDist)) : 0,
+        nextStop: scheduled?.nextStop ?? '',
+        tripId: trip?.id ?? null,
       };
       this.current.set(vid, state);
       if (previous) moved.push(state);
       else added.push(state);
       bySource.gps++;
-      byMode[v.mode] = (byMode[v.mode] ?? 0) + 1;
+      byMode[mode] = (byMode[mode] ?? 0) + 1;
     }
 
     const removed: number[] = [];

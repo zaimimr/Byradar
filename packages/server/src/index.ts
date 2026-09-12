@@ -38,8 +38,12 @@ const railBoards = new RailBoards(store.meta.serviceDate);
 let situations: SituationSnapshot = EMPTY_SITUATIONS;
 let situationErrors = 0;
 
+const codespaces = ENV.situationCodespaces.length
+  ? ENV.situationCodespaces
+  : [...new Set(store.routes.map((route) => route.id.split(':')[0] ?? ''))].filter(Boolean).sort();
+
 const stopSituations = startSituationPoller({
-  codespaces: ENV.situationCodespaces,
+  codespaces,
   intervalMs: ENV.situationPollMs,
   scope: {
     knownLine: (id) => routeIds.has(id),
@@ -171,7 +175,7 @@ app.log.info(
 );
 
 const stopRt = startTripUpdatePoller({
-  codespacePrefix: 'RUT',
+  keep: (tripId) => store.tripById.has(tripId),
   intervalMs: ENV.rtPollMs,
   onSnapshot: (snap) => {
     engine.setTripUpdates(snap);
@@ -329,12 +333,12 @@ function readPoint(query: { lat?: string; lon?: string }): { lat: number; lon: n
   return { lat, lon };
 }
 
-app.get<{ Querystring: { q?: string } }>('/geocode', {
+app.get<{ Querystring: { q?: string; lat?: string; lon?: string } }>('/geocode', {
   config: { rateLimit: { max: PLACE_LOOKUP_LIMIT, timeWindow: ENV.rateLimitWindowMs } },
 }, async (req, reply) => {
   const query = (req.query.q ?? '').trim();
   if (!query) return { results: [] };
-  const hits = await geocoder.lookup(query);
+  const hits = await geocoder.lookup(query, readPoint(req.query));
   if (hits === null) return reply.code(503).send({ error: 'adressesøket svarer ikke akkurat nå' });
   reply.header('Cache-Control', 'private, max-age=120');
   return { results: hits };
@@ -344,7 +348,7 @@ app.get<{ Querystring: { lat?: string; lon?: string } }>('/place', {
   config: { rateLimit: { max: PLACE_LOOKUP_LIMIT, timeWindow: ENV.rateLimitWindowMs } },
 }, async (req, reply) => {
   const point = readPoint(req.query);
-  if (!point) return reply.code(400).send({ error: 'punktet ligger utenfor kartutsnittet for Oslo' });
+  if (!point) return reply.code(400).send({ error: 'punktet ligger utenfor kartet over Norge' });
   reply.header('Cache-Control', 'private, max-age=300');
   return profilePlace(store, departureIndex, railBoards, point.lat, point.lon);
 });
@@ -353,7 +357,7 @@ app.get<{ Querystring: { lat?: string; lon?: string; to?: string } }>('/place/co
   config: { rateLimit: { max: PLACE_LOOKUP_LIMIT, timeWindow: ENV.rateLimitWindowMs } },
 }, async (req, reply) => {
   const point = readPoint(req.query);
-  if (!point) return reply.code(400).send({ error: 'punktet ligger utenfor kartutsnittet for Oslo' });
+  if (!point) return reply.code(400).send({ error: 'punktet ligger utenfor kartet over Norge' });
   const target = req.query.to ?? '';
   const place = store.stopPlaceIdxById.get(target);
   if (place === undefined) return reply.code(404).send({ error: 'ukjent stoppested' });

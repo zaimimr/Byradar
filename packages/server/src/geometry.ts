@@ -1,4 +1,4 @@
-import { SHAPE_STRIDE, type ShapeMeta } from './store.js';
+import { COORD_SCALE, SHAPE_STRIDE, type ShapeMeta } from './store.js';
 
 const DEG = Math.PI / 180;
 const TANGENT_BEHIND_M = 11;
@@ -22,7 +22,7 @@ function bearingBetween(lat0: number, lon0: number, lat1: number, lon1: number):
 }
 
 function sampleAt(
-  shapeData: Float64Array,
+  shapeData: Int32Array,
   shape: ShapeMeta,
   distance: number,
 ): { lat: number; lon: number } {
@@ -41,10 +41,10 @@ function sampleAt(
   const i0 = Math.max(0, i1 - 1);
   const d0 = shapeData[base + i0 * SHAPE_STRIDE]!;
   const d1 = shapeData[base + i1 * SHAPE_STRIDE]!;
-  const la0 = shapeData[base + i0 * SHAPE_STRIDE + 1]!;
-  const lo0 = shapeData[base + i0 * SHAPE_STRIDE + 2]!;
-  const la1 = shapeData[base + i1 * SHAPE_STRIDE + 1]!;
-  const lo1 = shapeData[base + i1 * SHAPE_STRIDE + 2]!;
+  const la0 = shapeData[base + i0 * SHAPE_STRIDE + 1]! / COORD_SCALE;
+  const lo0 = shapeData[base + i0 * SHAPE_STRIDE + 2]! / COORD_SCALE;
+  const la1 = shapeData[base + i1 * SHAPE_STRIDE + 1]! / COORD_SCALE;
+  const lo1 = shapeData[base + i1 * SHAPE_STRIDE + 2]! / COORD_SCALE;
 
   const span = d1 - d0;
   const f = span <= 0 ? 0 : Math.min(1, Math.max(0, (distance - d0) / span));
@@ -52,7 +52,7 @@ function sampleAt(
 }
 
 export function pointAtDistance(
-  shapeData: Float64Array,
+  shapeData: Int32Array,
   shape: ShapeMeta,
   distance: number,
 ): PointOnShape {
@@ -78,7 +78,7 @@ export function pointAtDistance(
 }
 
 function fitTangent(
-  shapeData: Float64Array,
+  shapeData: Int32Array,
   shape: ShapeMeta,
   from: number,
   to: number,
@@ -110,7 +110,7 @@ function fitTangent(
     const d = shapeData[base + i * SHAPE_STRIDE]!;
     if (d <= from) continue;
     if (d >= to) break;
-    add(shapeData[base + i * SHAPE_STRIDE + 1]!, shapeData[base + i * SHAPE_STRIDE + 2]!);
+    add(shapeData[base + i * SHAPE_STRIDE + 1]! / COORD_SCALE, shapeData[base + i * SHAPE_STRIDE + 2]! / COORD_SCALE);
   }
   add(ahead.lat, ahead.lon);
 

@@ -63,7 +63,7 @@ export const ENV = {
   apiRateLimitMax: int('API_RATE_LIMIT_MAX', 90),
   remoteBoards: bool('REMOTE_BOARDS', true),
   situationPollMs: int('SITUATION_POLL_MS', 180_000),
-  situationCodespaces: (process.env.SITUATION_CODESPACES ?? 'RUT,VYG,FLT,OST,NBU')
+  situationCodespaces: (process.env.SITUATION_CODESPACES ?? '')
     .split(',')
     .map((entry) => entry.trim().toUpperCase())
     .filter(Boolean),

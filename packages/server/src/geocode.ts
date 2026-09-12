@@ -20,6 +20,11 @@ const CATEGORY_WORD: Record<string, string> = {
   venue: 'sted',
 };
 
+export interface Focus {
+  lat: number;
+  lon: number;
+}
+
 export interface GeoHit {
   id: string;
   name: string;
@@ -68,11 +73,14 @@ export class Geocoder {
     };
   }
 
-  async lookup(query: string): Promise<GeoHit[] | null> {
+  async lookup(query: string, focus: Focus | null = null): Promise<GeoHit[] | null> {
     const text = query.trim().slice(0, MAX_QUERY_CHARS);
     if (text.length < MIN_QUERY_CHARS) return [];
 
-    const key = text.toLowerCase();
+    const near = focus && this.inside(focus.lat, focus.lon) ? focus : null;
+    const key = near
+      ? `${text.toLowerCase()}@${near.lat.toFixed(1)},${near.lon.toFixed(1)}`
+      : text.toLowerCase();
     const cached = this.cache.get(key);
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.hits;
 
@@ -81,16 +89,16 @@ export class Geocoder {
 
     if (Date.now() < this.pausedUntil || this.inflight >= MAX_INFLIGHT) return null;
 
-    const request = this.load(key, text);
+    const request = this.load(key, text, near);
     this.pending.set(key, request);
     return request;
   }
 
-  private async load(key: string, text: string): Promise<GeoHit[] | null> {
+  private async load(key: string, text: string, focus: Focus | null): Promise<GeoHit[] | null> {
     this.inflight++;
     this.lookups++;
     try {
-      const hits = await this.fetchHits(text);
+      const hits = await this.fetchHits(text, focus);
       this.cache.set(key, { at: Date.now(), hits });
       this.prune();
       this.consecutiveFailures = 0;
@@ -124,16 +132,16 @@ export class Geocoder {
     );
   }
 
-  private async fetchHits(text: string): Promise<GeoHit[]> {
-    const centreLat = (this.bbox.minLat + this.bbox.maxLat) / 2;
-    const centreLon = (this.bbox.minLon + this.bbox.maxLon) / 2;
+  private async fetchHits(text: string, focus: Focus | null): Promise<GeoHit[]> {
     const url = new URL(AUTOCOMPLETE);
     url.searchParams.set('text', text);
     url.searchParams.set('size', String(REQUEST_SIZE));
     url.searchParams.set('lang', 'no');
     url.searchParams.set('layers', LAYERS);
-    url.searchParams.set('focus.point.lat', centreLat.toFixed(4));
-    url.searchParams.set('focus.point.lon', centreLon.toFixed(4));
+    if (focus) {
+      url.searchParams.set('focus.point.lat', focus.lat.toFixed(4));
+      url.searchParams.set('focus.point.lon', focus.lon.toFixed(4));
+    }
 
     const res = await fetch(url, {
       headers: { 'ET-Client-Name': ENV.clientName },

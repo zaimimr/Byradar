@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "packages/web/src/styles.css"
+        ],
+        "createdAt": "2026-09-08T12:25:26.216Z",
+        "reason": "user confirmed: asked to silence the lint rather than change the design; the 2px accent edges predate this session (967b194, 6485e1e, abd84c0, 8d0e2bf) and are a deliberate motif carrying line color and severity"
+      }
+    ]
+  }
+}
