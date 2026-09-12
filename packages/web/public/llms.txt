@@ -1,0 +1,27 @@
+# Byradar
+
+> Sanntidskart over kollektivtrafikken i Norge, og boligsjekk av kollektivtilbudet på en adresse.
+
+## Hva det gjør
+- Tegner buss, T-bane, trikk, tog og båt i sanntid på ett kart, fra selskapene i alle fylkene
+- Boligsjekk for en adresse: hvilke stopp som ligger i gangavstand, hvor ofte det går fra dem,
+  og reisetid til jobb
+- Merker per kjøretøy om posisjonen er faktisk GPS fra kjøretøyet eller beregnet fra rute pluss
+  sanntidsavvik
+- Ingen innlogging, gratis
+
+## Hva det ikke er
+- Ikke en billettapp. Billetter kjøpes hos det lokale selskapet.
+- Ikke tilknyttet Ruter, Skyss, AtB eller noe annet kollektivselskap.
+
+## Sider
+- [Kart](https://byradar.no): sanntidskartet for hele landet
+- [Oslo](https://byradar.no/oslo)
+- [Bergen](https://byradar.no/bergen)
+- [Trondheim](https://byradar.no/trondheim)
+- [Stavanger](https://byradar.no/stavanger)
+- [Kristiansand](https://byradar.no/kristiansand)
+- [Tromsø](https://byradar.no/tromso)
+- [Drammen](https://byradar.no/drammen)
+- [Ålesund](https://byradar.no/alesund)
+- [Om](https://byradar.no/om)
