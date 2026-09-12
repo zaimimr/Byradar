@@ -155,6 +155,16 @@ class ShapeStore {
     this.cursor.set(id, at + 1);
   }
 
+  finalize(): number {
+    let dropped = 0;
+    for (const [id, span] of this.spans) {
+      const filled = this.cursor.get(id) ?? 0;
+      dropped += span.n - filled;
+      span.n = filled;
+    }
+    return dropped;
+  }
+
   span(id: string): ShapeSpan | undefined {
     return this.spans.get(id);
   }
@@ -393,6 +403,8 @@ async function ingest(corpus: Corpus, source: GtfsSource, args: Args): Promise<v
     if (dist < 0 || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
     corpus.shapes.put(id, dist, lat, lon);
   });
+  const skipped = corpus.shapes.finalize();
+  if (skipped > 0) log(`${source.id}: ${skipped} shape points had no distance or no position`);
 
   log(`${source.id}: ${routeCount} routes, ${localTrips.size} trips, ${callRows} calls, ${corpus.shapes.size} shapes`);
 }
