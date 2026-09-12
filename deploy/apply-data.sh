@@ -9,6 +9,7 @@ if [ -z "$TARBALL" ] || [ ! -s "$TARBALL" ]; then
 fi
 
 TARBALL=$(readlink -f "$TARBALL")
+chmod a+r "$TARBALL" 2>/dev/null || true
 cd "$(dirname "$(readlink -f "$0")")"
 
 log() { printf '%s apply-data: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }

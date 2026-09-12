@@ -12,6 +12,7 @@ case "$REQUEST" in
 		TARBALL=$(mktemp /tmp/byradar-data.XXXXXX.tgz)
 		trap 'rm -f "$TARBALL"' EXIT
 		cat > "$TARBALL"
+		chmod 0644 "$TARBALL"
 		"$REPO/deploy/apply-data.sh" "$TARBALL"
 		;;
 	*)
