@@ -1,4 +1,4 @@
-const VERSION = 'byradar-v2';
+const VERSION = 'byradar-v3';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
