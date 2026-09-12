@@ -1,4 +1,5 @@
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
+import { PathStyleExtension } from '@deck.gl/extensions';
 import type { Layer } from '@deck.gl/core';
 
 import { LATE_AFTER_SECONDS, MODE_DRAW_ORDER, hexToRgb, punctuality } from './palette.js';
@@ -10,6 +11,9 @@ import type { AppState, LineFilter } from './state.js';
 import type { Mode, NetworkPath, StopPlace, Vehicle } from './types.js';
 
 const CASING: [number, number, number, number] = [6, 8, 12, 190];
+
+const dashed = new PathStyleExtension({ dash: true, highPrecisionDash: true });
+const FERRY_DASH: [number, number] = [3.4, 2.6];
 
 const MODE_ALPHA: Record<Mode, number> = {
   metro: 238,
@@ -357,6 +361,7 @@ function buildMapLayers(input: LayerInput): Layer[] {
         );
       }
 
+      const link = mode === 'ferry';
       layers.push(
         new PathLayer<NetworkPath>({
           id: `network-${mode}`,
@@ -369,9 +374,17 @@ function buildMapLayers(input: LayerInput): Layer[] {
           updateTriggers: { getColor: fade },
           widthUnits: 'pixels',
           widthMinPixels: 0.9,
-          capRounded: true,
+          capRounded: !link,
           jointRounded: true,
           parameters: { depthCompare: 'always' },
+          ...(link
+            ? {
+                extensions: [dashed],
+                getDashArray: FERRY_DASH,
+                dashJustified: true,
+                dashGapPickable: false,
+              }
+            : {}),
         }),
       );
     }
