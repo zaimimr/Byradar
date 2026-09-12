@@ -1,0 +1,85 @@
+name: data
+
+on:
+  schedule:
+    - cron: '15 3 * * *'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Service date to build (YYYYMMDD), blank for tonight'
+        required: false
+        default: ''
+
+concurrency:
+  group: data-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build the national timetable
+        env:
+          DATE: ${{ inputs.date }}
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          df -h /
+          if [ -n "$DATE" ]; then
+            npm run -w @byradar/pipeline start -- --force "--date=$DATE"
+          else
+            npm run -w @byradar/pipeline start -- --force
+          fi
+
+      - name: Pack the artifacts
+        run: |
+          tar czf byradar-data.tgz -C data server web
+          ls -lh byradar-data.tgz
+
+      - name: Load the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Ship it to the box and swap it in
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=20 \
+            -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" data < byradar-data.tgz
+
+      - name: Check the public site serves the new day
+        run: |
+          for attempt in $(seq 1 10); do
+            body=$(curl -sS https://byradar.no/health || true)
+            if printf '%s' "$body" | grep -q '"ok":true'; then
+              echo "$body"
+              exit 0
+            fi
+            echo "attempt $attempt: $body"
+            sleep 6
+          done
+          echo "byradar.no/health never came back ok" >&2
+          exit 1
+
+      - name: Clean up the key
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519

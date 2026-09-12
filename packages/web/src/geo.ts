@@ -18,7 +18,7 @@ const MESSAGES = {
   denied: 'posisjon er avslått. gi nettleseren tilgang og prøv igjen',
   unavailable: 'fant ingen posisjon akkurat nå',
   timeout: 'tidsavbrudd under posisjonering. prøv igjen',
-  outside: 'du er utenfor kartutsnittet for Oslo',
+  outside: 'du er utenfor kartet over Norge',
 } as const;
 
 function messageFor(error: GeolocationPositionError): string {

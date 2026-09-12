@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO=${BYRADAR_REPO:-/opt/byradar}
+REQUEST=${SSH_ORIGINAL_COMMAND:-}
+
+case "$REQUEST" in
+	'' | deploy)
+		exec /usr/local/bin/byradar-deploy
+		;;
+	data)
+		TARBALL=$(mktemp /tmp/byradar-data.XXXXXX.tgz)
+		trap 'rm -f "$TARBALL"' EXIT
+		cat > "$TARBALL"
+		"$REPO/deploy/apply-data.sh" "$TARBALL"
+		;;
+	*)
+		echo "byradar-ci: refused \"$REQUEST\", this key may only deploy or ship data" >&2
+		exit 1
+		;;
+esac

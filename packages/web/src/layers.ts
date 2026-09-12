@@ -48,6 +48,7 @@ export interface LayerInput {
   latitude: number;
   mapBearing: number;
   network: NetworkPath[];
+  networkVersion: number;
   stops: StopPlace[];
   vehicles: Vehicle[];
   sprites: SpriteSet;
@@ -56,6 +57,36 @@ export interface LayerInput {
 }
 
 const colorCache = new Map<string, [number, number, number]>();
+
+let netCacheKey = '';
+let netCache = new Map<Mode, NetworkPath[]>();
+
+function pathsByMode(input: LayerInput): Map<Mode, NetworkPath[]> {
+  const { state, network, networkVersion, deviations } = input;
+  const gate = deviationGate(state, deviations);
+  const key = [
+    networkVersion,
+    network.length,
+    [...state.modes].sort().join(','),
+    state.line?.idx ?? -1,
+    gate ? deviations.idx.size : -1,
+  ].join('|');
+  if (key === netCacheKey) return netCache;
+
+  const byMode = new Map<Mode, NetworkPath[]>();
+  for (const path of network) {
+    if (!state.modes.has(path.m)) continue;
+    if (state.line && path.r !== state.line.idx) continue;
+    if (gate && !deviations.idx.has(path.r)) continue;
+    const bucket = byMode.get(path.m);
+    if (bucket) bucket.push(path);
+    else byMode.set(path.m, [path]);
+  }
+
+  netCacheKey = key;
+  netCache = byMode;
+  return byMode;
+}
 
 function rgb(hex: string): [number, number, number] {
   let cached = colorCache.get(hex);
@@ -289,21 +320,17 @@ function appendFixLayers(layers: Layer[], state: AppState): void {
 }
 
 function buildMapLayers(input: LayerInput): Layer[] {
-  const { state, zoom, latitude, mapBearing, network, stops, vehicles, sprites, frame, deviations } = input;
+  const { state, zoom, latitude, mapBearing, stops, vehicles, sprites, frame, deviations } = input;
   const layers: Layer[] = [];
-  const lineFilter = state.line;
 
   if (state.showNetwork) {
+    const byMode = pathsByMode(input);
     for (const mode of MODE_DRAW_ORDER) {
       if (!state.modes.has(mode)) continue;
-      const paths = network.filter(
-        (p) =>
-          p.m === mode &&
-          (!lineFilter || p.r === lineFilter.idx) &&
-          (!deviationGate(state, deviations) || deviations.idx.has(p.r)),
-      );
-      if (!paths.length) continue;
+      const paths = byMode.get(mode);
+      if (!paths?.length) continue;
       const weight = pathWeight(mode, zoom);
+      const fade = mode === 'bus' || mode === 'other' ? busFade(zoom) : 1;
 
       if ((mode === 'metro' || mode === 'tram') && zoom >= 11.4) {
         layers.push(
@@ -330,11 +357,9 @@ function buildMapLayers(input: LayerInput): Layer[] {
           positionFormat: 'XY',
           getPath: (d) => d.path,
           getColor: (d) =>
-            [
-              ...rgb(d.c),
-              Math.round(MODE_ALPHA[mode] * (mode === 'bus' || mode === 'other' ? busFade(zoom) : 1)),
-            ] as [number, number, number, number],
+            [...rgb(d.c), Math.round(MODE_ALPHA[mode] * fade)] as [number, number, number, number],
           getWidth: weight,
+          updateTriggers: { getColor: fade },
           widthUnits: 'pixels',
           widthMinPixels: 0.9,
           capRounded: true,

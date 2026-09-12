@@ -1,21 +1,25 @@
 # Deploying Byradar
 
-One Hetzner CPX22 (2 vCPU, 4 GB RAM, 80 GB disk) behind Cloudflare, sized for about
-1000 concurrent viewers. Caddy terminates TLS and reverse-proxies a single Node
-server that serves the web bundle, the static timetable data and the `/live`
-WebSocket.
+One Hetzner box (1 vCPU, 2 GB RAM, 40 GB disk) behind Cloudflare. Caddy
+terminates TLS and reverse-proxies a single Node server that serves the web
+bundle, the static timetable data and the `/live` WebSocket.
+
+The timetable covers all of Norway, and building it needs more machine than the
+box has, so the nightly build runs in GitHub Actions and ships the finished
+artifacts over SSH.
 
 ```
 Cloudflare -> Caddy :443 -> server :8787 -> data volume
                                             ^
                                             |
-                            pipeline (nightly, one-shot)
+                          GitHub Actions "data" workflow (nightly)
+                          builds, scp, apply-data.sh swaps it in
 ```
 
 ## Provision
 
-`provision.sh` does all of the below and is safe to re-run. On a fresh CPX22 with
-Ubuntu 24.04:
+`provision.sh` does all of the below and is safe to re-run. On a fresh CPX12 or
+larger with Ubuntu 24.04:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/zaimimr/byradar/main/deploy/provision.sh -o provision.sh
@@ -26,12 +30,12 @@ bash provision.sh          # second run builds, seeds the data and starts everyt
 
 It sets the timezone, installs Docker, clones to `/opt/byradar`, refuses to
 continue while `.env` still holds placeholder values, builds, runs the pipeline
-once only if the data volume is empty, starts the stack, installs the nightly
-timer and waits for `/health`.
+once only if the data volume is empty, starts the stack, removes the retired
+on-box refresh timer and waits for `/health`.
 
 The manual equivalent, if you would rather do it by hand:
 
-1. Create the CPX22 with Ubuntu 24.04, then on the box:
+1. Create the box with Ubuntu 24.04, then on it:
 
    ```sh
    timedatectl set-timezone Europe/Oslo
@@ -39,8 +43,8 @@ The manual equivalent, if you would rather do it by hand:
    curl -fsSL https://get.docker.com | sh
    ```
 
-   The timezone matters: the nightly timer runs on system local time and the
-   pipeline picks its service date from the Oslo calendar day.
+   The timezone matters: logs and the pipeline's service date both follow the
+   Oslo calendar day.
 
 2. Build for **linux/amd64**. The compose file pins it, so building on the box
    itself is a no-op and building on an Apple Silicon Mac emulates rather than
@@ -85,20 +89,48 @@ docker compose --profile tools run --rm pipeline
 docker compose up -d
 ```
 
-The first pipeline run downloads about 130 MB of GTFS zips and extracts roughly
-825 MB into the `cache` volume. Later runs reuse the zips if they are less than
-six hours old.
-
-Install the nightly refresh:
+The first pipeline run on the box downloads Entur's national GTFS aggregate,
+about 590 MB zipped and 3.4 GB extracted into the `cache` volume, and needs
+roughly 1.2 GB of RAM. On a 2 GB box stop the server first. It is usually easier
+to skip this entirely and trigger the data workflow instead:
 
 ```sh
-cp systemd/byradar-refresh.* /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now byradar-refresh.timer
-systemctl list-timers byradar-refresh.timer
+gh workflow run data
 ```
 
-The timer fires at **04:45** Oslo time with up to 15 minutes of jitter.
+## Nightly data
+
+The `data` workflow builds the timetable on a GitHub runner (4 vCPU, 16 GB) and
+ships it to the box:
+
+1. `npm run -w @byradar/pipeline start -- --force` writes `data/server` and
+   `data/web`, about 145 MB, 45 MB packed.
+2. `scp` drops the tarball in `/tmp` on the box.
+3. `deploy/apply-data.sh` unpacks it into `/app/data/.staging`, checks every
+   expected artifact is present and non-empty, moves the live generation aside to
+   `/app/data/.previous`, swaps staging in and restarts the server. If `/health`
+   does not come back within 150 s it puts `.previous` back and restarts again.
+
+It fires at **03:15 UTC**, which is 04:15 or 05:15 Oslo depending on the season.
+
+The hour matters and is not arbitrary. GTFS puts trips that run past midnight in
+the *previous* service day, as hours 24:00-27:00, and the server loads exactly
+one service date. So between midnight and the end of night service the running
+vehicles belong to yesterday's build, and rebuilding during that window empties
+the map. Building after 04:00 Oslo leaves the night covered by yesterday's
+generation and swaps the new day in once night service has ended.
+
+Run it by hand, optionally for a given day:
+
+```sh
+gh workflow run data
+gh workflow run data -f date=20260914
+gh run watch $(gh run list -w data -L1 --json databaseId -q '.[0].databaseId')
+```
+
+The old on-box `byradar-refresh.timer` is retired; `provision.sh` removes it.
+`refresh-data.sh` still works as an emergency fallback, but it stops the server
+for the length of the build and needs the whole box to itself.
 
 The hour matters and is not arbitrary. GTFS puts trips that run past midnight in
 the *previous* service day, as hours 24:00-27:00, and the server loads exactly
@@ -115,14 +147,15 @@ build:data` is safe at any hour. `--date=` still overrides it.
 `Persistent=true` means a run missed while the box was down happens at the next
 boot.
 
-`refresh-data.sh` never lets a failed run reach the live data:
+Neither path lets a failed run reach the live data:
 
-1. The pipeline writes to `data/.staging` (`DATA_DIR` override), not over the
-   live files. A crash partway leaves the live generation whole.
+1. The build happens somewhere else entirely, or into `data/.staging` on the box
+   (`DATA_DIR` override). A crash partway leaves the live generation whole.
 2. The swap checks every expected artifact is present and non-empty, moves the
    live generation aside to `data/.previous`, and moves staging into place. If
    either move fails it rolls back on the way out.
-3. Only after a clean swap does the server restart.
+3. Only after a clean swap does the server restart, and a server that does not
+   come back healthy gets the previous generation put back under it.
 
 So a failure at any step leaves the box serving the timetable it already had,
 which is a day stale rather than absent. `data/.previous` keeps one generation
@@ -155,11 +188,12 @@ curl -s -o /dev/null -w '%{http_code}\n' https://$SITE_ADDRESS/data/meta.json
 
 docker compose ps
 docker stats --no-stream
-journalctl -u byradar-refresh.service -n 50
+gh run list -w data -L 5
 ```
 
-`serviceDate` in `/health` must be today's Oslo date. If it is yesterday's, the
-nightly job did not run or the pipeline failed; check the journal.
+`serviceDate` in `/health` must be today's Oslo date, except between midnight and
+04:00 when yesterday's is correct. If it is stale in the middle of the day the
+nightly workflow failed; check `gh run list -w data`.
 
 ## Access control
 
@@ -183,7 +217,8 @@ Leave it empty when the frontend is served from the same origin as the API, whic
 is the case in this compose file: the request's own origin always passes.
 
 Set `ADMIN_TOKEN` only if you want `/health` diagnostics from outside the box;
-`provision.sh` and `refresh-data.sh` read them over loopback and need no token.
+`provision.sh`, `refresh-data.sh` and `apply-data.sh` read them over loopback and
+need no token.
 
 What this does and does not buy:
 
@@ -211,10 +246,10 @@ include Norwegian VAT:
 
 Plus €0.63/mo for the IPv4.
 
-CPX22 is the drop-in: the limits below add to 2.6 GB and fit its 4 GB. CPX12's
-2 GB cannot hold the server and the pipeline at the same time, so on that plan
-the nightly refresh has to stop the server first, trading a few seconds of
-restart for about two minutes of downtime.
+The box in production is the 1 vCPU / 2 GB / 40 GB tier, and the national
+timetable fits it because the pipeline no longer runs there: the server settles
+around 350 MB resident and the box never sees the 3.4 GB feed. Going up a tier
+buys headroom for an on-box rebuild and a faster image build, nothing else.
 
 ## Resource budget
 
@@ -223,11 +258,16 @@ an Apple Silicon Mac would otherwise produce an arm64 image that cannot run on
 the box. Emulated amd64 builds work on a Mac and are what the numbers below came
 from.
 
-| Container | Limit | Measured |
+| Container | Limit | Measured on the national timetable |
 |---|---|---|
-| server | 896 MB | 335 MB running in the container on the real feed |
+| server | 896 MB | 313 MB on a weekday build, 344 MB on a Saturday |
 | caddy | 256 MB | ~30 MB |
-| pipeline | 1536 MB | completes at a 768 MB limit, dies at 512 MB |
+| pipeline | 1700 MB | 1.18 GB peak, weekday, emergency use only |
+
+A weekday national day is 3620 routes, 74 564 trips, 1.85 M stop calls, 4.4 M
+shape points after simplification, and 50 259 stop places served. On disk that is
+53 MB of `shapes.bin`, 37 MB of `trips.bin` and 36 MB of web data including the
+bus tiles. Loading it takes about 4 s and building the departure index 200 ms.
 
 Image size, since the available commands disagree and it is worth knowing which
 is which:
@@ -245,39 +285,19 @@ The runtime stage installs only the server and pipeline workspaces. The web
 bundle is prebuilt, so deck.gl and maplibre have no business in the image:
 including them cost 119 MB of `node_modules` for code that is never loaded.
 
-The pipeline number needs explaining, because the obvious measurements disagree
-and only one of them is the number you size against.
+The pipeline holds the whole day in memory while it works: every shape point of
+every trip that runs, 22.4 M of them before simplification, in flat typed arrays.
+`/usr/bin/time -l` on darwin/arm64 reports a 1.18 GB peak footprint on a weekday.
+Much of a cgroup's reported peak is page cache from streaming 3.4 GB of GTFS
+text, which the kernel reclaims under pressure, so the cgroup number tracks
+whatever limit it is given rather than the requirement.
 
-- `/usr/bin/time -l` on darwin/arm64 reports **764 MB** peak RSS.
-- The cgroup reports **1308 MB** peak when given a 1536 MB limit, and **768 MB**
-  peak when given 768 MB. It expands to fill whatever it is given.
+This is why the nightly build moved to a GitHub runner. The box can still do it
+in an emergency with the server stopped, which is what `refresh-data.sh` does,
+but it leaves almost no margin on 2 GB.
 
-Both are misleading on their own. `memory.stat` after a run shows `anon 5 MB`,
-`file 700 MB`: almost all of that peak is page cache from streaming the GTFS
-text files, and the kernel reclaims it under pressure rather than OOM-killing.
-So the cgroup peak tracks the limit, not the requirement.
-
-The requirement is what a hard limit actually survives. Measured by bisection on
-the real feed:
-
-| Limit | Result |
-|---|---|
-| 768 MB | completes, all 13 artifacts |
-| 512 MB | exit 134, V8 heap abort |
-| 384 MB | exit 137, OOM killed |
-
-So the true floor is between 512 and 768 MB, and the 1536 MB limit is roughly
-double it. Server, caddy and pipeline together cap at 2.6 GB on a 4 GB box.
-
-These came from emulated amd64 on darwin, so re-check after the first real
-nightly run:
-
-```sh
-systemd-run --scope -p MemoryAccounting=yes ./refresh-data.sh
-```
-
-If the pipeline is ever OOM-killed the refresh script exits non-zero, the swap
-never happens, and the server keeps serving the timetable it already has.
+If a run is ever OOM-killed the script exits non-zero, the swap never happens,
+and the server keeps serving the timetable it already has.
 
 ## Cloudflare
 
@@ -322,7 +342,8 @@ the API routes, which are never cached.
 ```sh
 docker compose logs -f server
 docker compose restart server
-./refresh-data.sh                     # rebuild the timetable now
+gh workflow run data                  # rebuild the timetable off-box, the normal way
+./refresh-data.sh                     # rebuild on the box, emergency only
 docker compose --profile tools run --rm pipeline npm run -w @byradar/pipeline start:force
 docker compose build && docker compose up -d   # after a git pull
 ```
@@ -346,12 +367,21 @@ Repository secrets it needs:
 | `DEPLOY_HOST` | the box's IP |
 | `DEPLOY_USER` | `root` |
 
+The same key and secrets drive `.github/workflows/data.yml`, which ships the
+nightly timetable.
+
 The key is **not** a general shell key. Its `authorized_keys` entry pins a forced
-command, so whatever the client asks for, sshd runs the deploy and nothing else:
+command, so whatever the client asks for, sshd runs one of two things and nothing
+else:
 
 ```
-command="/usr/local/bin/byradar-deploy",restrict ssh-ed25519 AAAA... byradar-ci-deploy
+command="/usr/local/bin/byradar-ci",restrict ssh-ed25519 AAAA... byradar-ci
 ```
+
+`byradar-ci` reads `SSH_ORIGINAL_COMMAND`: an empty command or `deploy` rolls the
+server, `data` reads a tarball from stdin and hands it to `apply-data.sh`, and
+anything else is refused. Shipping data over stdin rather than `scp` keeps the
+forced command intact; `scp` would need its own subsystem carve-out.
 
 `restrict` drops port, agent and X11 forwarding, the pty and user rc files. Verify it
 by asking for something else and watching a deploy happen instead:
@@ -360,9 +390,10 @@ by asking for something else and watching a deploy happen instead:
 ssh -o IdentitiesOnly=yes -i ci_deploy root@<ip> id
 ```
 
-`/usr/local/bin/byradar-deploy` deliberately lives **outside** the git tree. It copies
-`deploy/ci-deploy.sh` to a temp file and runs the copy, so the `git reset --hard` inside
-the deploy cannot rewrite the script that is executing. `provision.sh` installs it.
+`/usr/local/bin/byradar-deploy` and `/usr/local/bin/byradar-ci` deliberately live
+**outside** the git tree. The first copies `deploy/ci-deploy.sh` to a temp file and runs
+the copy, so the `git reset --hard` inside the deploy cannot rewrite the script that is
+executing. `provision.sh` installs both.
 
 Rotating the key: `ssh-keygen -t ed25519 -N '' -f ci_deploy`, replace the line in
 `~/.ssh/authorized_keys` on the box, then `gh secret set DEPLOY_SSH_KEY < ci_deploy`.

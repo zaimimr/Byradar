@@ -8,6 +8,8 @@ const MAX_STOPS = 8;
 const NEAR_PREFIX_WIDE_TOKEN = 7;
 const NEAR_PREFIX_MIN_TOKEN = 4;
 const GROUP_RADIUS_M = 400;
+const NEAR_BONUS = 260;
+const NEAR_HALF_KM = 25;
 const METRES_PER_DEG_LAT = 111_320;
 
 export interface StopGroup {
@@ -181,22 +183,41 @@ export function buildSearchIndex(routes: RouteMeta[], stops: StopPlace[]): Searc
   };
 }
 
-function take<T>(pool: Array<Indexed<T>>, tokens: string[], limit: number): T[] {
+function take<T>(
+  pool: Array<Indexed<T>>,
+  tokens: string[],
+  limit: number,
+  bias: (entry: T) => number = () => 0,
+): T[] {
   const scored: Array<{ entry: T; score: number }> = [];
   for (const indexed of pool) {
     const score = scoreEntry(indexed, tokens);
-    if (score > 0) scored.push({ entry: indexed.entry, score });
+    if (score > 0) scored.push({ entry: indexed.entry, score: score + bias(indexed.entry) });
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit).map((s) => s.entry);
 }
 
-export function search(index: SearchIndex, query: string): SearchResults {
+function nearnessBonus(group: StopGroup, near: Near): number {
+  const dLat = (group.lat - near.lat) * 111;
+  const dLon = (group.lon - near.lon) * 111 * Math.cos((near.lat * Math.PI) / 180);
+  const km = Math.hypot(dLat, dLon);
+  return Math.round(NEAR_BONUS / (1 + km / NEAR_HALF_KM));
+}
+
+export interface Near {
+  lat: number;
+  lon: number;
+}
+
+export function search(index: SearchIndex, query: string, near: Near | null = null): SearchResults {
   const tokens = normalize(query).split(' ').filter(Boolean);
   if (!tokens.length) return { lines: [], stops: [] };
   return {
     lines: take(index.lines, tokens, MAX_LINES),
-    stops: take(index.stops, tokens, MAX_STOPS),
+    stops: take(index.stops, tokens, MAX_STOPS, (hit) =>
+      near ? nearnessBonus(hit.group, near) : 0,
+    ),
   };
 }
 

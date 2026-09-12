@@ -203,7 +203,7 @@ export function placeBody(view: PlaceView): string {
     return `${head}<p class="inspector__note">regner ut kollektivtilbudet&hellip;</p>`;
   }
   if (view.profile.phase === 'failed') {
-    return `${head}<p class="inspector__note">Fikk ikke hentet kollektivtilbudet for dette punktet. Ligger det innenfor kartutsnittet for Oslo?</p>`;
+    return `${head}<p class="inspector__note">Fikk ikke hentet kollektivtilbudet for dette punktet. Ligger det i Norge?</p>`;
   }
 
   const profile = view.profile.profile;

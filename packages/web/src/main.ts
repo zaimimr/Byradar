@@ -13,8 +13,9 @@ import { calmBasemap, createMap, setBuildingVisibility, setLabelVisibility, supp
 import { buildSearchIndex } from './search.js';
 import type { SearchIndex, StopGroup } from './search.js';
 import { nearestGroups } from './nearby.js';
+import { NetworkTiles } from './nettiles.js';
 import type { NearbyStop } from './nearby.js';
-import { DEFAULT_TARGETS, geocode, placeCommute, placeProfile } from './place.js';
+import { DEFAULT_TARGETS, geocode, placeCommute, placeProfile, targetsNear } from './place.js';
 import type { CommuteTarget, GeoHit, PlacePin } from './place.js';
 import type { PlaceView } from './placeview.js';
 import { NO_DEVIATIONS, deviationRoutes, loadSituations } from './situations.js';
@@ -74,6 +75,7 @@ const initialLineId = readHashLineId();
 const sprites = buildVehicleSprites();
 
 let network: NetworkPath[] = [];
+let networkVersion = 0;
 let stops: StopPlace[] = [];
 let routes: RouteMeta[] = [];
 let searchIndex: SearchIndex | null = null;
@@ -241,7 +243,8 @@ async function lookupAddress(query: string): Promise<GeoHit[]> {
   addressAbort?.abort();
   const controller = new AbortController();
   addressAbort = controller;
-  return geocode(query, controller.signal);
+  const centre = map.getCenter();
+  return geocode(query, { lat: centre.lat, lon: centre.lng }, controller.signal);
 }
 
 async function loadCommute(token: number, target: CommuteTarget): Promise<void> {
@@ -256,6 +259,7 @@ async function loadCommute(token: number, target: CommuteTarget): Promise<void> 
 }
 
 function addTarget(target: CommuteTarget): void {
+  state.chosenTargets = true;
   if (state.targets.some((existing) => existing.id === target.id)) return;
   if (state.targets.length >= MAX_TARGETS) state.targets.splice(DEFAULT_TARGETS.length, 1);
   state.targets.push(target);
@@ -272,6 +276,7 @@ async function openPlace(pin: PlacePin, fly = true): Promise<void> {
   stopFollow();
   state.place = pin;
   state.placeStops = [];
+  if (!state.chosenTargets) state.targets = targetsNear(pin.lat, pin.lon);
   syncHash(state);
 
   const token = ++placeToken;
@@ -448,7 +453,29 @@ map.on('move', () => {
   syncHash(state);
   carryViewToFeedback();
   scheduleViewportReport();
+  scheduleTileLoad();
+  ui.setCentre(center.lat, center.lng);
 });
+
+const tiles = new NetworkTiles(DATA, () => {
+  network = tiles.paths;
+  networkVersion = tiles.version;
+});
+
+let tileTimer: number | undefined;
+
+function loadTilesForView(): void {
+  const b = map.getBounds();
+  tiles.update(
+    { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() },
+    map.getZoom(),
+  );
+}
+
+function scheduleTileLoad(): void {
+  if (tileTimer !== undefined) clearTimeout(tileTimer);
+  tileTimer = window.setTimeout(loadTilesForView, 220);
+}
 
 let viewportTimer: number | undefined;
 let lastViewportSentMs = 0;
@@ -489,10 +516,12 @@ async function loadStatic(): Promise<void> {
     throw new Error('kunne ikke laste kartdata');
   }
   meta = (await metaRes.json()) as DataMeta;
-  network = (await networkRes.json()) as NetworkPath[];
   stops = (await stopsRes.json()) as StopPlace[];
   routes = (await routesRes.json()) as RouteMeta[];
   ui.setMeta(meta);
+
+  tiles.setCore((await networkRes.json()) as NetworkPath[]);
+  void tiles.loadIndex().then(loadTilesForView);
 
   searchIndex = buildSearchIndex(routes, stops);
   ui.setSearchIndex(searchIndex);
@@ -526,7 +555,10 @@ function restorePlace(): void {
   for (const id of readHashTargetIds()) {
     if (state.targets.some((target) => target.id === id)) continue;
     const group = searchIndex?.groupByStopId.get(id);
-    if (group) state.targets.push({ id, name: group.name });
+    if (group) {
+      state.chosenTargets = true;
+      state.targets.push({ id, name: group.name });
+    }
   }
   const pin = readHashPlace();
   if (!pin) return;
@@ -710,6 +742,7 @@ function redraw(): void {
       latitude: state.view.latitude,
       mapBearing: state.view.bearing,
       network,
+      networkVersion,
       stops,
       vehicles,
       sprites,

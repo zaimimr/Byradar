@@ -116,6 +116,7 @@ export class Ui {
   private flash: HTMLParagraphElement | null = null;
   private flashTimer: number | undefined;
   private searchIndex: SearchIndex | null = null;
+  private centre: { lat: number; lon: number } | null = null;
   private situations: SituationIndex = EMPTY_SITUATION_INDEX;
   private hits: AnyHit[] = [];
   private activeHit = -1;
@@ -416,7 +417,7 @@ export class Ui {
     if (!this.searchIndex) return;
     const input = el<HTMLInputElement>('search-input');
     const panel = el<HTMLElement>('search-results');
-    const results = search(this.searchIndex, query);
+    const results = search(this.searchIndex, query, this.centre);
     const addresses: AddressHit[] = (this.addressQuery === query ? this.addressHits : []).map((hit) => ({
       kind: 'address',
       hit,
@@ -635,6 +636,10 @@ export class Ui {
     const label = el<HTMLElement>('conn-label');
     node.dataset.state = state;
     label.textContent = state === 'live' ? 'sanntid aktiv' : state === 'connecting' ? 'kobler til' : 'mistet signal';
+  }
+
+  setCentre(lat: number, lon: number): void {
+    this.centre = { lat, lon };
   }
 
   syncState(state: AppState): void {
@@ -942,7 +947,7 @@ export class Ui {
         close();
         return;
       }
-      const stops = search(this.searchIndex, query).stops.slice(0, MAX_TARGET_HITS);
+      const stops = search(this.searchIndex, query, this.centre).stops.slice(0, MAX_TARGET_HITS);
       if (!stops.length) {
         results.innerHTML = '<p class="search__empty">ingen stopp</p>';
         results.hidden = false;

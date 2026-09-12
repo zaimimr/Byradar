@@ -60,14 +60,14 @@ services:
       - tools
     command: ["npm", "run", "-w", "@byradar/pipeline", "start"]
     environment:
-      NODE_OPTIONS: --max-old-space-size=1024
+      NODE_OPTIONS: --max-old-space-size=1536
     volumes:
       - data:/app/data
       - cache:/app/.cache
     deploy:
       resources:
         limits:
-          memory: 1280M
+          memory: 1700M
 
   caddy:
     image: caddy:2.8-alpine

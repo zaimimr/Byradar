@@ -69,7 +69,7 @@ if docker compose --profile tools run --rm -T --no-deps --entrypoint sh pipeline
 	-c '[ -s /app/data/server/meta.json ]' 2>/dev/null; then
 	echo "data volume already populated, skipping the first pipeline run"
 else
-	echo "empty data volume, running the pipeline once (downloads ~130 MB, extracts ~825 MB)"
+	echo "empty data volume, running the pipeline once (downloads ~590 MB, extracts ~3.4 GB, needs ~1.2 GB RAM)"
 	docker compose --profile tools run --rm -T --no-deps pipeline
 fi
 
@@ -77,18 +77,20 @@ log "up"
 docker compose up -d
 docker compose ps
 
-log "nightly refresh timer"
-install -m 644 systemd/byradar-refresh.service /etc/systemd/system/
-install -m 644 systemd/byradar-refresh.timer /etc/systemd/system/
+log "retiring the old on-box refresh timer, the data workflow owns the schedule now"
+systemctl disable --now byradar-refresh.timer 2>/dev/null || true
+rm -f /etc/systemd/system/byradar-refresh.timer /etc/systemd/system/byradar-refresh.service
 systemctl daemon-reload
-systemctl enable --now byradar-refresh.timer
-systemctl list-timers byradar-refresh.timer --no-pager
 
-log "CI deploy entrypoint"
+log "data swap entrypoint"
+chmod +x apply-data.sh
+
+log "CI entrypoints"
 install -m 755 byradar-deploy /usr/local/bin/byradar-deploy
-chmod +x ci-deploy.sh
+install -m 755 byradar-ci /usr/local/bin/byradar-ci
+chmod +x ci-deploy.sh apply-data.sh
 echo "authorise the CI key with a forced command in ~/.ssh/authorized_keys:"
-echo '  command="/usr/local/bin/byradar-deploy",restrict ssh-ed25519 AAAA... byradar-ci-deploy'
+echo '  command="/usr/local/bin/byradar-ci",restrict ssh-ed25519 AAAA... byradar-ci'
 
 log "waiting for the server to answer /health"
 for _ in $(seq 1 40); do

@@ -1,6 +1,6 @@
 import { MODE_RAIL_ORDER } from './palette.js';
 import type { Fix } from './geo.js';
-import { DEFAULT_TARGETS } from './place.js';
+import { ALL_HUB_TARGETS, DEFAULT_TARGETS } from './place.js';
 import type { CommuteTarget, PlacePin } from './place.js';
 import type { Mode, RouteMeta } from './types.js';
 
@@ -44,23 +44,52 @@ export interface AppState {
   place: PlacePin | null;
   placeStops: Array<{ lat: number; lon: number }>;
   targets: CommuteTarget[];
+  chosenTargets: boolean;
   line: LineFilter | null;
   follow: FollowState | null;
   fix: Fix | null;
 }
 
 const PHONE_QUERY = '(max-width: 620px)';
-const PHONE_ZOOM = 13.3;
+const PHONE_ZOOM = 4.0;
 
 const DEFAULT_VIEW: ViewState = {
-  longitude: 10.7522,
-  latitude: 59.9139,
-  zoom: 12.2,
+  longitude: 13.5,
+  latitude: 64.6,
+  zoom: 4.4,
   pitch: 0,
   bearing: 0,
 };
 
+const LAST_VIEW_KEY = 'byradar:view';
+
+function storedView(): ViewState | null {
+  try {
+    const raw = window.localStorage.getItem(LAST_VIEW_KEY);
+    if (!raw) return null;
+    const [lon, lat, zoom] = raw.split(',').map(Number);
+    if (![lon, lat, zoom].every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
+    if (lat! < 57 || lat! > 72 || lon! < 3 || lon! > 33 || zoom! < 3 || zoom! > 19) return null;
+    return { longitude: lon!, latitude: lat!, zoom: zoom!, pitch: 0, bearing: 0 };
+  } catch {
+    return null;
+  }
+}
+
+export function rememberView(view: ViewState): void {
+  try {
+    window.localStorage.setItem(
+      LAST_VIEW_KEY,
+      `${view.longitude.toFixed(4)},${view.latitude.toFixed(4)},${view.zoom.toFixed(2)}`,
+    );
+  } catch {
+    return;
+  }
+}
+
 function defaultView(): ViewState {
+  const stored = storedView();
+  if (stored) return stored;
   const onPhone = typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches;
   return onPhone ? { ...DEFAULT_VIEW, zoom: PHONE_ZOOM } : { ...DEFAULT_VIEW };
 }
@@ -157,6 +186,7 @@ export function createState(): AppState {
     place: null,
     placeStops: [],
     targets: [...DEFAULT_TARGETS],
+    chosenTargets: false,
     line: null,
     follow: null,
     fix: null,
@@ -168,6 +198,7 @@ let hashTimer: number | undefined;
 export function syncHash(state: AppState): void {
   if (hashTimer !== undefined) clearTimeout(hashTimer);
   hashTimer = window.setTimeout(() => {
+    rememberView(state.view);
     const params = new URLSearchParams();
     params.set('lon', state.view.longitude.toFixed(4));
     params.set('lat', state.view.latitude.toFixed(4));
@@ -190,7 +221,7 @@ export function syncHash(state: AppState): void {
       params.set('p', `${state.place.lat.toFixed(5)},${state.place.lon.toFixed(5)}`);
       if (state.place.label) params.set('pn', state.place.label);
     }
-    const extra = state.targets.filter((target) => !DEFAULT_TARGETS.some((base) => base.id === target.id));
+    const extra = state.targets.filter((target) => !ALL_HUB_TARGETS.some((base) => base.id === target.id));
     if (extra.length) params.set('to', extra.map((target) => target.id).join(','));
     history.replaceState(null, '', `#${params.toString()}`);
   }, 220);
