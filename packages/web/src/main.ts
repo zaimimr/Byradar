@@ -684,21 +684,40 @@ async function fetchDepartures(stopId: string, limit: number): Promise<StopDepar
   }
 }
 
-async function findMe(): Promise<void> {
+async function findMe(opts: { instant?: boolean; quiet?: boolean } = {}): Promise<void> {
+  const { instant = false, quiet = false } = opts;
   ui.setLocateState('busy');
   ui.setFlash(null);
   const outcome = await locate(meta?.bbox ?? null);
   if (!outcome.ok) {
     state.fix = null;
     ui.setLocateState('idle');
-    ui.setFlash(outcome.message);
+    if (!quiet) ui.setFlash(outcome.message);
     return;
   }
   state.fix = outcome.fix;
   ui.setLocateState('active');
-  map.flyTo({ center: [outcome.fix.lon, outcome.fix.lat], zoom: Math.max(map.getZoom(), STOP_FLY_ZOOM), speed: 1.3 });
+  const center: [number, number] = [outcome.fix.lon, outcome.fix.lat];
+  const zoom = Math.max(map.getZoom(), STOP_FLY_ZOOM);
+  if (instant) map.jumpTo({ center, zoom });
+  else map.flyTo({ center, zoom, speed: 1.3 });
   stopFollow();
   await openNearby(outcome.fix);
+}
+
+function deepLinked(): boolean {
+  return (
+    hashHasView() ||
+    readHashStopId() !== null ||
+    readHashLineId() !== null ||
+    readHashPlace() !== null ||
+    readHashTargetIds().length > 0
+  );
+}
+
+async function startAtLocation(): Promise<void> {
+  if (deepLinked()) return;
+  await findMe({ instant: true, quiet: true });
 }
 
 const feed = new LiveFeed(WS_URL, {
@@ -874,6 +893,7 @@ try {
   await loadStatic();
   feed.start();
   requestAnimationFrame(loop);
+  void startAtLocation();
 } catch (err) {
   ui.setBoot('kunne ikke laste data – kjører serveren?');
   console.error(err);
