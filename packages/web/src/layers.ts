@@ -30,6 +30,7 @@ const STOP_MIN_ZOOM: Record<Mode, number> = {
 };
 
 const BUBBLE_RADIUS_PX = 11;
+const DOT_ZOOM = 9.2;
 const GLYPH_PX = 16;
 const ARROW_PX = 9.5;
 const LABEL_ZOOM = 14.2;
@@ -108,6 +109,12 @@ function pathWeight(mode: Mode, zoom: number): number {
     other: 0.72,
   };
   return base[mode] + zoomBoost * (mode === 'bus' ? 0.5 : 1);
+}
+
+function dotRadius(zoom: number): number {
+  if (zoom <= 5) return 1.9;
+  if (zoom >= DOT_ZOOM) return 4.6;
+  return 1.9 + ((zoom - 5) / (DOT_ZOOM - 5)) * 2.7;
 }
 
 function busFade(zoom: number): number {
@@ -407,7 +414,32 @@ function buildMapLayers(input: LayerInput): Layer[] {
 
   const mpp = metresPerPixel(latitude, zoom);
   const asFootprint = zoom >= FOOTPRINT_ZOOM;
+  const asDot = zoom < DOT_ZOOM;
   const screenAngle = (d: Vehicle): number => mapBearing - d.bearing;
+
+  if (asDot) {
+    const radius = dotRadius(zoom);
+    layers.push(
+      new ScatterplotLayer<Vehicle>({
+        id: 'vehicle-dot',
+        data: shown,
+        pickable: true,
+        getPosition: (d) => [d.lon, d.lat],
+        getRadius: radius,
+        radiusUnits: 'pixels',
+        stroked: zoom >= 7.5,
+        filled: true,
+        getFillColor: (d) => [...rgb(d.color), d.source === 'gps' ? 255 : 225] as [number, number, number, number],
+        getLineColor: (d) => [...rgb(punctuality(d.delay).hex), 255] as [number, number, number, number],
+        lineWidthUnits: 'pixels',
+        getLineWidth: 1.2,
+        updateTriggers: { getFillColor: frame, getLineColor: frame, getPosition: frame, getRadius: radius },
+        parameters: { depthCompare: 'always' },
+      }),
+    );
+    return layers;
+  }
+
   const struggling = shown.filter((v) => v.delay >= HALO_DELAY);
 
   if (struggling.length) {

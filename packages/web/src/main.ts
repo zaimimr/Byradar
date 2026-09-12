@@ -66,7 +66,7 @@ const FOLLOW_VIEWPORT_MAX_WAIT_MS = 1500;
 const COARSE_POINTER = window.matchMedia('(pointer: coarse)').matches;
 const VEHICLE_PICK_RADIUS = COARSE_POINTER ? 10 : 5;
 const STOP_PICK_RADIUS = COARSE_POINTER ? 14 : 5;
-const VEHICLE_LAYER_IDS = ['vehicle-hull', 'vehicle-bubble'];
+const VEHICLE_LAYER_IDS = ['vehicle-hull', 'vehicle-bubble', 'vehicle-dot'];
 
 const DATA = DATA_URL;
 const API = API_URL;
