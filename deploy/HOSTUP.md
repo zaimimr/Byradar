@@ -12,6 +12,13 @@ the current timetable, previous generation and feedback. The
 `byradar_caddy_data` volume holds the HTTPS certificates. The Hostup GitHub
 deploy key is read only, and the CI SSH key runs only `/usr/local/bin/byradar-ci`.
 
+The `byradar-backup.timer` writes a protected archive of the deployment
+configuration, timetable, feedback and HTTPS certificates to
+`/var/backups/byradar` each morning. The Mac launchd job
+`se.byradar.backup-pull` copies archives every six hours and verifies SHA256.
+The archive and its off-server copy have mode 600; the directories have mode
+700. Backups are restored into an empty directory to check their contents.
+
 The `data` GitHub Action builds the timetable each night off the VPS. Both
 GitHub Actions join Tailscale as ephemeral `tag:ci` nodes. The tailnet policy
 allows this tag to reach only `100.113.84.36` on TCP port 22. Hostup's public
@@ -44,8 +51,9 @@ SSH port remains blocked.
    complete.
 
 5. Check the public `/health` route, `/live` WebSocket, map tiles, the
-   `www` redirect and the private ZHouse routes. Leave the Hetzner instance
-   available for rollback until the next scheduled data refresh succeeds.
+   `www` redirect and the private ZHouse routes. Run a backup and restore
+   check. Leave the Hetzner instance available for rollback until the next
+   scheduled data refresh succeeds.
 
 ## Rollback
 

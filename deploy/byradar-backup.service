@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up Byradar data and configuration
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/byradar/deploy/backup.sh
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/backups/byradar /var/lock

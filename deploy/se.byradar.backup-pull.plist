@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>se.byradar.backup-pull</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/zaimimran/.config/byradar/bin/pull-backup.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardErrorPath</key>
+  <string>/Users/zaimimran/.config/byradar/backups/pull.log</string>
+  <key>StandardOutPath</key>
+  <string>/Users/zaimimran/.config/byradar/backups/pull.log</string>
+  <key>StartInterval</key>
+  <integer>21600</integer>
+</dict>
+</plist>
