@@ -92,6 +92,14 @@ chmod +x ci-deploy.sh apply-data.sh
 echo "authorise the CI key with a forced command in ~/.ssh/authorized_keys:"
 echo '  command="/usr/local/bin/byradar-ci",restrict ssh-ed25519 AAAA... byradar-ci'
 
+log "daily backup"
+install -d -m 0700 /var/backups/byradar
+chmod +x backup.sh
+install -m 0644 byradar-backup.service /etc/systemd/system/byradar-backup.service
+install -m 0644 byradar-backup.timer /etc/systemd/system/byradar-backup.timer
+systemctl daemon-reload
+systemctl enable --now byradar-backup.timer
+
 log "waiting for the server to answer /health"
 for _ in $(seq 1 40); do
 	if docker compose exec -T server node -e \

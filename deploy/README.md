@@ -1,25 +1,27 @@
 # Deploying Byradar
 
-One Hetzner box (1 vCPU, 2 GB RAM, 40 GB disk) behind Cloudflare. Caddy
-terminates TLS and reverse-proxies a single Node server that serves the web
-bundle, the static timetable data and the `/live` WebSocket.
+Byradar shares a Hostup XS VPS (2 vCPU, 4 GB RAM, 50 GB disk) with ZHouse.
+Caddy binds only the public IPv4 address on ports 80 and 443 and reverse-proxies
+the Node server that serves the web bundle, static timetable data and `/live`
+WebSocket. ZHouse stays on its private Tailscale routes.
 
 The timetable covers all of Norway, and building it needs more machine than the
 box has, so the nightly build runs in GitHub Actions and ships the finished
-artifacts over SSH.
+artifacts over private Tailscale SSH.
 
 ```
-Cloudflare -> Caddy :443 -> server :8787 -> data volume
-                                            ^
-                                            |
-                          GitHub Actions "data" workflow (nightly)
-                          builds, scp, apply-data.sh swaps it in
+Public DNS -> Hostup public IP :443 -> Caddy -> server :8787 -> data volume
+                                                           ^
+                                                           |
+                     GitHub Actions "data" workflow over Tailscale (nightly)
+                     builds, ships, and apply-data.sh swaps it in
 ```
 
 ## Provision
 
-`provision.sh` does all of the below and is safe to re-run. On a fresh CPX12 or
-larger with Ubuntu 24.04:
+The shared Hostup installation and cutover are documented in
+[`HOSTUP.md`](HOSTUP.md). `provision.sh` remains for a fresh standalone Ubuntu
+24.04 VPS with at least 2 GB RAM. It is safe to re-run there:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/zaimimr/byradar/main/deploy/provision.sh -o provision.sh
@@ -40,7 +42,7 @@ The manual equivalent, if you would rather do it by hand:
    ```sh
    timedatectl set-timezone Europe/Oslo
    apt-get update && apt-get install -y ca-certificates curl git
-   curl -fsSL https://get.docker.com | sh
+   apt-get install -y docker.io docker-compose-v2
    ```
 
    The timezone matters: logs and the pipeline's service date both follow the
@@ -59,9 +61,9 @@ The manual equivalent, if you would rather do it by hand:
    $EDITOR .env
    ```
 
-4. Point an A record at the box. Keep it **DNS only** (grey cloud) until Caddy has
-   issued a certificate, then switch it to proxied if you want Cloudflare in front.
-   See "Cloudflare" below.
+4. Point an A record at the public IPv4. Set `PUBLIC_BIND_IP` in `deploy/.env`
+   when sharing a machine with private services. If using Cloudflare, keep the
+   record DNS only until Caddy has issued a certificate. See "Cloudflare" below.
 
 ## MapTiler key
 
@@ -234,26 +236,14 @@ What this does and does not buy:
 
 ## Choosing the machine
 
-Hetzner's Cost-Optimized line (CX) reads "Currently not available" and is greyed
-out in every location, so CPX is what you can actually buy. Prices in the console
-include Norwegian VAT:
-
-| Type | vCPU | RAM | Disk | Traffic | Price incl. VAT |
-|---|---|---|---|---|---|
-| CPX12 | 1 | 2 GB | 40 GB | 20 TB | €14.36/mo |
-| CPX22 | 2 | 4 GB | 80 GB | 20 TB | €24.36/mo |
-| CPX32 | 4 | 8 GB | 160 GB | 20 TB | €44.36/mo |
-
-Plus €0.63/mo for the IPv4.
-
-The box in production is the 1 vCPU / 2 GB / 40 GB tier, and the national
-timetable fits it because the pipeline no longer runs there: the server settles
-around 350 MB resident and the box never sees the 3.4 GB feed. Going up a tier
-buys headroom for an on-box rebuild and a faster image build, nothing else.
+The shared Hostup XS has 2 vCPU, 4 GB RAM, 50 GB disk and 2 TB monthly traffic.
+The national timetable fits because the pipeline runs in GitHub Actions. The
+server settles around 350 to 450 MB resident, and the VPS never needs to hold
+the 3.4 GB extracted feed. Keep the pipeline off this shared machine.
 
 ## Resource budget
 
-`docker-compose.yml` pins `linux/amd64` everywhere. Hetzner is x86_64; a build on
+`docker-compose.yml` pins `linux/amd64` everywhere. Hostup is x86_64; a build on
 an Apple Silicon Mac would otherwise produce an arm64 image that cannot run on
 the box. Emulated amd64 builds work on a Mac and are what the numbers below came
 from.
@@ -363,12 +353,15 @@ Repository secrets it needs:
 | Secret | Value |
 | --- | --- |
 | `DEPLOY_SSH_KEY` | private half of a deploy-only ed25519 key |
-| `DEPLOY_KNOWN_HOSTS` | `<ip> ssh-ed25519 AAAA...` from `ssh-keyscan -t ed25519 <ip>` |
-| `DEPLOY_HOST` | the box's IP |
+| `DEPLOY_KNOWN_HOSTS` | Hostup's verified SSH host key, prefixed with its Tailscale IP |
+| `DEPLOY_HOST` | `100.113.84.36` |
 | `DEPLOY_USER` | `root` |
+| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth client ID with `auth_keys` write scope for `tag:ci` |
+| `TS_OAUTH_SECRET` | Secret for that OAuth client |
 
 The same key and secrets drive `.github/workflows/data.yml`, which ships the
-nightly timetable.
+nightly timetable. The runner joins the tailnet as an ephemeral `tag:ci` node,
+which can reach only Hostup's SSH port. Public SSH stays closed.
 
 The key is **not** a general shell key. Its `authorized_keys` entry pins a forced
 command, so whatever the client asks for, sshd runs one of two things and nothing

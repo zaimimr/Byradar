@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Byradar backup
+
+[Timer]
+OnCalendar=*-*-* 06:00:00
+Persistent=true
+Unit=byradar-backup.service
+
+[Install]
+WantedBy=timers.target

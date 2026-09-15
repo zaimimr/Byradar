@@ -79,9 +79,9 @@ services:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in deploy/.env}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${PUBLIC_BIND_IP:-0.0.0.0}:80:80"
+      - "${PUBLIC_BIND_IP:-0.0.0.0}:443:443"
+      - "${PUBLIC_BIND_IP:-0.0.0.0}:443:443/udp"
     volumes:
       - ./caddy:/etc/caddy:ro
       - caddy_data:/data
