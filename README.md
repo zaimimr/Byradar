@@ -111,7 +111,7 @@ Pass `--force` to bypass the 6-hour zip cache, or `--date=2026-09-14` to build a
 
 ## Deploying
 
-`deploy/` holds a single-box setup: multi-stage Dockerfile, compose file, Caddy for automatic TLS, and a systemd timer that refreshes the timetable nightly. The refresh stages a whole generation into `data/.staging`, verifies all 13 artifacts, keeps the previous one in `data/.previous`, and restarts the server only after a clean swap, so a failed run leaves the box on the timetable it already had.
+`deploy/` holds the Hostup setup: multi-stage Dockerfile, compose file, Caddy for automatic TLS, and a nightly GitHub Action that builds the timetable off the box. The refresh stages a whole generation into `data/.staging`, verifies all 13 artifacts, keeps the previous one in `data/.previous`, and restarts the server only after a clean swap, so a failed run leaves the box on the timetable it already had.
 
 The image must be built for `linux/amd64`; the compose file pins it so a build on an arm64 Mac cannot silently ship the wrong architecture. See `deploy/README.md` for provisioning and the measured memory budget.
 
