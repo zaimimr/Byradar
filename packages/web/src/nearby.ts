@@ -32,8 +32,10 @@ export function walkMinutes(metres: number): number {
 }
 
 export function formatDistance(metres: number): string {
-  if (metres < 950) return `${Math.round(metres / 10) * 10} m`;
-  return `${(metres / 1000).toFixed(1).replace('.', ',')} km`;
+  const roundedMetres = Math.round(metres / 10) * 10;
+  if (roundedMetres < 1000) return `${roundedMetres} m`;
+  const km = Math.round(metres / 100) / 10;
+  return `${km.toFixed(1).replace('.', ',')} km`;
 }
 
 export function nearestGroups(index: SearchIndex, fix: Fix, limit: number): NearbyStop[] {
