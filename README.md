@@ -47,7 +47,7 @@ Verified by measuring rendered pixels rather than trusting the code: crop each m
 
 A delay correction must change a vehicle's *velocity*, never its *position*. Every 30 s the `trip-updates` poll lands and the schedule-derived position can shift by hundreds of metres at once; done naively that jolts the whole map in unison. Two mechanisms prevent it:
 
-- **Server-side slew limiting.** Position along the route is rate-limited: normal progress plus at most 14 m/s of catch-up, 7 m/s of drift-back, and a hard reset only past 1.5 km. A 300 m correction dissolves over ~20 s of imperceptibly fast running instead of a one-second lurch.
+- **Server-side slew limiting.** Position along the route is rate-limited: normal progress plus at most 14 m/s of catch-up, 3 m/s of drift-back, and a hard reset only past 1.5 km. A 300 m correction dissolves over ~20 s of imperceptibly fast running instead of a one-second lurch.
 - **Per-vehicle glide windows.** The browser interpolates each vehicle against its own observed update rate rather than a fixed tick, so Ruter vehicles glide over 1 s and GPS vehicles polled every 8 s glide over 8 s instead of freezing then jumping. Anything faster than 80 m/s for the elapsed window snaps rather than sliding.
 
 Measured over 50 consecutive ticks: median movement holds 5.6-7.0 m/s with no synchronised spike, no tick moves more than one vehicle over 250 m, and the page holds 60 fps in both 2D and tilted 3D.
